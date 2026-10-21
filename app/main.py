@@ -15,7 +15,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name
 logger = logging.getLogger("api_vehiculo_iot")
 
 DESCRIPCION = """
-API local del vehículo IoT conectada a la base **vehiculo_iot** de Amazon RDS.
+API REST del vehículo IoT, desplegada en **Amazon EC2** y conectada a la base **vehiculo_iot** de Amazon RDS.
 Todas las operaciones usan los 21 Stored Procedures de las prácticas 2.3 y 2.4.
 
 * **GET** para consultas y **POST** para crear, actualizar, eliminar y ejecutar acciones.
@@ -23,7 +23,9 @@ Todas las operaciones usan los 21 Stored Procedures de las prácticas 2.3 y 2.4.
 * Un **movimiento individual** actualiza el estado y se guarda en el historial.
 * Una **DEMO** se transmite por WebSocket y actualiza el estado, pero **no** entra al historial.
 
-**WebSocket:** `ws://localhost:8000/ws/vehiculos/{id_vehiculo}` (mensajes descritos en README.md).
+**WebSocket:** `wss://quetzali-iot.duckdns.org/ws/vehiculos/{id_vehiculo}` (mensajes descritos en README.md).
+
+**GitHub:** [Quetzali-vit/api_vehiculo_iot_2_6](https://github.com/Quetzali-vit/api_vehiculo_iot_2_6)
 """
 
 ETIQUETAS = [
@@ -40,13 +42,13 @@ ETIQUETAS = [
 @asynccontextmanager
 async def ciclo_de_vida(app: FastAPI):
     get_contenedor()  # valida las variables de entorno al arrancar
-    logger.info("API lista en http://localhost:8000 (Swagger en /docs)")
+    logger.info("API lista en el puerto 8000 (Swagger en /docs)")
     yield
     await get_contenedor().ejecutor.cancelar_todas()
 
 
 app = FastAPI(
-    title="API Vehículo IoT · Entorno Dev",
+    title="API Vehículo IoT",
     description=DESCRIPCION,
     version="1.0.0",
     openapi_tags=ETIQUETAS,
@@ -81,6 +83,11 @@ async def manejar_error_api(request: Request, error: ApiError):
 async def manejar_error_inesperado(request: Request, error: Exception):
     logger.exception("Error no controlado en %s %s", request.method, request.url.path)
     return JSONResponse(status_code=500, content={"detail": "Error interno del servidor"})
+
+
+@app.get("/", tags=["Sistema"], summary="Estado del servicio")
+async def raiz():
+    return {"api": "Vehículo IoT", "estado": "Online", "documentacion": "/docs"}
 
 
 @app.get("/salud", response_model=Mensaje, tags=["Sistema"], summary="Comprobar la conexión con Amazon RDS",

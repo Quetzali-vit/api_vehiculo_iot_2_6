@@ -1,10 +1,16 @@
-# API Vehículo IoT · Entorno Dev (Práctica 2.5)
+# API Vehículo IoT · Examen 2.6 (Amazon EC2 + RDS)
 
-API local en **Python + FastAPI**, organizada con programación orientada a objetos, que usa los
+API en **Python + FastAPI**, organizada con programación orientada a objetos, que usa los
 **21 Stored Procedures** del esquema `vehiculo_iot` alojado en **Amazon RDS** (prácticas 2.3 y 2.4).
 Incluye servicios GET y POST, monitoreo por **WebSocket** y ejecución de DEMO.
 
-> Se ejecuta solo en `http://localhost:8000`. La publicación con HTTPS/WSS corresponde a la práctica 2.6.
+> Publicada en Amazon EC2 con HTTPS/WSS:
+>
+> - Swagger UI: https://quetzali-iot.duckdns.org/docs
+> - WebSocket: `wss://quetzali-iot.duckdns.org/ws/vehiculos/{id_vehiculo}`
+> - Repositorio: https://github.com/Quetzali-vit/api_vehiculo_iot_2_6
+>
+> En un equipo local también se puede ejecutar en `http://localhost:8000`.
 
 ## Arquitectura
 
@@ -129,7 +135,9 @@ de 10, devuelve solo los disponibles. El historial completo se conserva en RDS.
 
 Swagger UI no documenta WebSocket, por eso se describe aquí.
 
-**URL:** `ws://localhost:8000/ws/vehiculos/{id_vehiculo}`
+**URL pública:** `wss://quetzali-iot.duckdns.org/ws/vehiculos/{id_vehiculo}`
+
+**URL local:** `ws://localhost:8000/ws/vehiculos/{id_vehiculo}`
 
 - Cada cliente recibe solo los eventos del vehículo que monitorea.
 - Varios clientes pueden conectarse al mismo vehículo.
@@ -167,6 +175,9 @@ Ejemplo de una DEMO:
 > La confirmación del ESP8266/ESP32 se integrará en una práctica posterior.
 
 ## Pruebas en Thunder Client
+
+Las pruebas públicas usan `https://quetzali-iot.duckdns.org` y `wss://quetzali-iot.duckdns.org`
+en lugar de `http://localhost:8000` y `ws://localhost:8000`.
 
 1. **POST** `http://localhost:8000/vehiculos/1/movimientos` con el encabezado `X-API-Key` y el cuerpo
    `{"codigo": 1}` → 201. Después se comprueba con `GET /vehiculos/1/estado` y `GET /vehiculos/1/historial`.
