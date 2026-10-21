@@ -1,14 +1,15 @@
 # API Vehículo IoT 
 
 API en **Python + FastAPI**, organizada con programación orientada a objetos, que usa los
-**21 Stored Procedures** del esquema `vehiculo_iot` alojado en **Amazon RDS** (prácticas 2.3 y 2.4).
+**21 Stored Procedures** del esquema `vehiculo_iot` alojado en **Amazon RDS**.
 Incluye servicios GET y POST, monitoreo por **WebSocket** y ejecución de DEMO.
 
 > Publicada en Amazon EC2 con HTTPS/WSS:
 >
 > - Swagger UI: https://quetzali-iot.duckdns.org/docs
-> - WebSocket: `wss://quetzali-iot.duckdns.org/ws/vehiculos/{id_vehiculo}`
-> - Repositorio: https://github.com/Quetzali-vit/api_vehiculo_iot_2_6
+> - WebSocket: 
+      URL pública: `wss://quetzali-iot.duckdns.org/ws/vehiculos/{id_vehiculo}`
+      URL local: `ws://localhost:8000/ws/vehiculos/{id_vehiculo}`
 >
 > En un equipo local también se puede ejecutar en `http://localhost:8000`.
 
