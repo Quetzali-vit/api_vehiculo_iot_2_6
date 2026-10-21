@@ -1,4 +1,4 @@
-# API Vehículo IoT · Examen 2.6 (Amazon EC2 + RDS)
+# API Vehículo IoT 
 
 API en **Python + FastAPI**, organizada con programación orientada a objetos, que usa los
 **21 Stored Procedures** del esquema `vehiculo_iot` alojado en **Amazon RDS** (prácticas 2.3 y 2.4).
