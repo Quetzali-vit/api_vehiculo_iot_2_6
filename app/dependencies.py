@@ -2,12 +2,18 @@ from functools import cached_property, lru_cache
 
 from app.core.config import get_settings
 from app.db.database import Database
+from app.repositories.admin_repository import (AuditoriaRepository, DemoAdminRepository,
+                                               InvitadoRepository, ModeloRepository,
+                                               UnidadRepository, UsuarioRepository)
 from app.repositories.comando_repository import ComandoRepository
 from app.repositories.demo_repository import DemoRepository
 from app.repositories.estado_repository import EstadoRepository
 from app.repositories.historial_repository import HistorialRepository
 from app.repositories.vehiculo_repository import VehiculoRepository
+from app.services.admin_service import AdminService
+from app.services.auth_service import AuthService
 from app.services.comando_service import ComandoService
+from app.services.invitado_service import InvitadoService
 from app.services.demo_executor import EjecutorDemos
 from app.services.demo_service import DemoService
 from app.services.estado_service import EstadoService
@@ -32,6 +38,14 @@ class Contenedor:
         self._historial = HistorialRepository()
         self._demos = DemoRepository()
         self._reglas = ReglasNegocio(self._vehiculos, self._comandos, self._demos)
+
+        # Práctica 4.3: administración comercial
+        self._usuarios = UsuarioRepository()
+        self._modelos = ModeloRepository()
+        self._unidades = UnidadRepository()
+        self._invitados_repo = InvitadoRepository()
+        self._auditoria = AuditoriaRepository()
+        self._demos_admin = DemoAdminRepository()
 
     @cached_property
     def vehiculos(self) -> VehiculoService:
@@ -61,6 +75,29 @@ class Contenedor:
     def movimientos(self) -> MovimientoService:
         return MovimientoService(self.db, self._reglas, self._estados, self._historial, self.gestor_ws,
                                  self.ejecutor, self.settings.origen_movimiento)
+
+    # ----- Práctica 4.3 -----
+
+    @cached_property
+    def auth(self) -> AuthService:
+        return AuthService(self.db, self._usuarios, self._unidades, self._invitados_repo, self._auditoria)
+
+    @cached_property
+    def admin(self) -> AdminService:
+        return AdminService(self.db, self._usuarios, self._modelos, self._unidades,
+                            self._auditoria, self._vehiculos)
+
+    @cached_property
+    def invitados(self) -> InvitadoService:
+        servicio = InvitadoService(self.db, self._invitados_repo, self._unidades, self._modelos,
+                                   self._auditoria, self._comandos)
+        # Se conecta después para evitar una dependencia circular con movimientos
+        servicio.conectar_movimientos(self.movimientos)
+        return servicio
+
+    @cached_property
+    def demos_admin(self) -> DemoAdminRepository:
+        return self._demos_admin
 
 
 @lru_cache

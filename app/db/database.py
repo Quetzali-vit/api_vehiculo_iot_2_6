@@ -11,7 +11,7 @@ from app.core.exceptions import BaseDatosNoDisponible, Conflicto, SolicitudInval
 logger = logging.getLogger(__name__)
 
 # Los 21 Stored Procedures del esquema vehiculo_iot (prácticas 2.3 y 2.4).
-PROCEDIMIENTOS = frozenset({
+PROCEDIMIENTOS_BASE = frozenset({
     "sp_crear_vehiculo", "sp_obtener_vehiculos", "sp_obtener_vehiculo",
     "sp_actualizar_vehiculo", "sp_eliminar_vehiculo",
     "sp_crear_comando", "sp_obtener_comandos_vehiculo", "sp_actualizar_comando", "sp_eliminar_comando",
@@ -21,6 +21,22 @@ PROCEDIMIENTOS = frozenset({
     "sp_agregar_movimiento_demo", "sp_obtener_movimientos_demo",
     "sp_actualizar_movimiento_demo", "sp_eliminar_movimiento_demo",
 })
+
+# Procedimientos agregados por la práctica 4.3 (migración 002_procedimientos.sql).
+PROCEDIMIENTOS_ADMIN = frozenset({
+    "sp_login_usuario", "sp_crear_usuario", "sp_obtener_usuarios", "sp_obtener_usuario",
+    "sp_actualizar_usuario",
+    "sp_crear_sesion", "sp_obtener_sesion", "sp_revocar_sesion",
+    "sp_crear_modelo", "sp_obtener_modelos", "sp_obtener_modelo", "sp_actualizar_modelo",
+    "sp_obtener_unidades", "sp_obtener_unidad", "sp_actualizar_comercial", "sp_asignar_unidad",
+    "sp_obtener_mis_vehiculos", "sp_catalogo_publico",
+    "sp_crear_sesion_invitado", "sp_obtener_sesion_invitado", "sp_finalizar_sesion_invitado",
+    "sp_expirar_sesiones_invitado",
+    "sp_registrar_auditoria", "sp_obtener_auditoria", "sp_metricas_dashboard",
+    "sp_crear_demo_propietario", "sp_obtener_demos_visibles", "sp_obtener_demo",
+})
+
+PROCEDIMIENTOS = PROCEDIMIENTOS_BASE | PROCEDIMIENTOS_ADMIN
 
 
 class SesionSP:

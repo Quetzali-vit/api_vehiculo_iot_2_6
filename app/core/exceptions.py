@@ -12,6 +12,18 @@ class SolicitudInvalida(ApiError):
     status_code = 400
 
 
+class NoAutenticado(ApiError):
+    """Falta la sesión o el token ya no sirve (4.3)."""
+
+    status_code = 401
+
+
+class Prohibido(ApiError):
+    """Hay sesión, pero ese usuario no tiene permiso sobre ese recurso (4.3)."""
+
+    status_code = 403
+
+
 class NoEncontrado(ApiError):
     status_code = 404
 

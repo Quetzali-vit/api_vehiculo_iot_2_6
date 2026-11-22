@@ -11,3 +11,6 @@ __pycache__/
 
 # Editor
 .vscode/
+.env
+__pycache__/
+*.pyc

@@ -42,6 +42,14 @@ class MovimientoService:
         await self._gestor.publicar(id_vehiculo, evento)
         return evento
 
+    def describir_comando(self, id_vehiculo: int, solicitud: MovimientoSolicitud) -> dict:
+        """Resuelve a qué comando se refiere la solicitud, sin ejecutar nada.
+
+        La capa de autorización (4.3) lo usa para saber si un invitado tiene
+        permitido ese comando antes de mover el vehículo.
+        """
+        return self._validar(id_vehiculo, solicitud)
+
     def _validar(self, id_vehiculo: int, solicitud: MovimientoSolicitud) -> dict:
         with self._db.transaccion() as sesion:
             self._reglas.vehiculo_activo(sesion, id_vehiculo)

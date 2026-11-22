@@ -3,12 +3,15 @@ from asyncio import to_thread
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.docs import get_swagger_ui_html
 from fastapi.responses import HTMLResponse, JSONResponse
 
+from app.core.config import get_settings
 from app.core.exceptions import ApiError
 from app.dependencies import get_contenedor
-from app.routers import comandos, demos, estado, historial, movimientos, vehiculos, websocket
+from app.routers import (administracion, auth, comandos, demos, estado, historial, invitados,
+                         movimientos, vehiculos, websocket)
 from app.schemas.comunes import Mensaje, respuestas_error
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -36,15 +39,23 @@ ETIQUETAS = [
     {"name": "Historial", "description": "Bitácora de los 10 movimientos individuales más recientes."},
     {"name": "DEMO", "description": "Secuencias de N movimientos y su ejecución por WebSocket."},
     {"name": "Sistema", "description": "Información y salud del servicio."},
+    {"name": "Autenticación", "description": "Inicio y cierre de sesión (práctica 4.3)."},
+    {"name": "Administración", "description": "Gestión comercial: modelos, unidades, clientes, "
+                                              "asignaciones y auditoría (solo ADMIN)."},
+    {"name": "Mis vehículos", "description": "Unidades del comprador que inició sesión."},
+    {"name": "Catálogo público", "description": "Modelos y disponibilidad para clientes potenciales."},
+    {"name": "Invitados", "description": "Pruebas de exhibición temporales y exclusivas."},
 ]
 
 
 @asynccontextmanager
 async def ciclo_de_vida(app: FastAPI):
-    get_contenedor()  # valida las variables de entorno al arrancar
+    contenedor = get_contenedor()  # valida las variables de entorno al arrancar
+    await contenedor.invitados.iniciar_vigilancia()  # cierra las pruebas vencidas (4.3)
     logger.info("API lista en el puerto 8000 (Swagger en /docs)")
     yield
-    await get_contenedor().ejecutor.cancelar_todas()
+    await contenedor.invitados.detener_vigilancia()
+    await contenedor.ejecutor.cancelar_todas()
 
 
 app = FastAPI(
@@ -55,6 +66,18 @@ app = FastAPI(
     lifespan=ciclo_de_vida,
     docs_url=None,
 )
+
+# El frontend vive en otro origen (GitHub Pages), así que el navegador exige CORS.
+# CORS no es autenticación: la protección real son la sesión y los permisos por recurso.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=get_settings().lista_cors,
+    allow_methods=["GET", "POST"],
+    allow_headers=["Content-Type", "X-API-Key", "Authorization"],
+    allow_credentials=False,
+    max_age=600,
+)
+
 
 # Swagger UI siempre en modo claro, aunque el navegador o el sistema estén en modo oscuro.
 MODO_CLARO = """
@@ -97,7 +120,8 @@ async def salud():
     return {"mensaje": "Conexión con Amazon RDS correcta"}
 
 
-for router in (vehiculos.router, comandos.router, estado.router, movimientos.router,
+for router in (auth.router, administracion.router, administracion.publico, invitados.router,
+               vehiculos.router, comandos.router, estado.router, movimientos.router,
                historial.router, demos.router, websocket.router):
     app.include_router(router)
 

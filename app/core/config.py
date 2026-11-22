@@ -19,11 +19,22 @@ class Settings(BaseSettings):
     db_name: str = "vehiculo_iot"
     db_connect_timeout: int = 10
 
-    api_key: str = Field(min_length=8, description="Clave para operaciones de control y eliminación")
+    api_key: str = Field(min_length=8, description="Clave del dispositivo (ESP32) para reportar su estado")
+
+    cors_origins: str = Field(
+        default="https://quetzali-vit.github.io",
+        description="Orígenes del frontend separados por coma. Ejemplo: "
+                    "https://quetzali-vit.github.io,http://127.0.0.1:5500",
+    )
     origen_movimiento: str = Field(default="API-LOCAL", max_length=30)
 
     host: str = "127.0.0.1"
     port: int = 8000
+
+
+    @property
+    def lista_cors(self) -> list[str]:
+        return [o.strip().rstrip("/") for o in self.cors_origins.split(",") if o.strip()]
 
 
 @lru_cache

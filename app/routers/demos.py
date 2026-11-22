@@ -2,7 +2,7 @@ from asyncio import to_thread
 
 from fastapi import APIRouter, Depends, Path, status
 
-from app.core.security import requiere_api_key
+from app.core.autorizacion import acceso_vehiculo, operar_vehiculo
 from app.dependencies import Contenedor, get_contenedor
 from app.schemas.comunes import Mensaje, respuestas_error
 from app.schemas.demo import (DemoActualizar, DemoCrear, DemoCreada, DemoEjecucionRespuesta, DemoEnCurso,
@@ -17,7 +17,10 @@ IdMovimiento = Path(ge=1, description="Identificador del movimiento de la DEMO")
 
 # ---------- DEMO ----------
 @router.get("", response_model=list[DemoRespuesta], summary="DEMO del vehículo",
-            description="**SP:** `sp_obtener_vehiculo`, `sp_obtener_demos`", responses=respuestas_error(404, 503))
+            description="**SP:** `sp_obtener_vehiculo`, `sp_obtener_demos`\n\n"
+                        "**Autorización (4.3).** Requiere sesión y acceso a esa unidad; editar una "
+                        "DEMO exige además poder operar la unidad.",
+            dependencies=[Depends(acceso_vehiculo)], responses=respuestas_error(401, 403, 404, 503))
 async def listar(id_vehiculo: int = IdVehiculo, c: Contenedor = Depends(get_contenedor)):
     return await to_thread(c.demos.listar, id_vehiculo)
 
@@ -25,14 +28,16 @@ async def listar(id_vehiculo: int = IdVehiculo, c: Contenedor = Depends(get_cont
 @router.post("", response_model=DemoCreada, status_code=status.HTTP_201_CREATED, summary="Crear DEMO",
              description="Crea una DEMO vacía; después se le agregan movimientos.\n\n"
                          "**SP:** `sp_obtener_vehiculo`, `sp_crear_demo`",
-             responses=respuestas_error(404, 503))
+             dependencies=[Depends(operar_vehiculo)], responses=respuestas_error(401, 403, 404, 503))
 async def crear(datos: DemoCrear, id_vehiculo: int = IdVehiculo, c: Contenedor = Depends(get_contenedor)):
     id_demo = await to_thread(c.demos.crear, id_vehiculo, datos)
     return {"mensaje": "DEMO creada", "id_demo": id_demo}
 
 
 @router.get("/ejecucion", response_model=DemoEnCurso, summary="¿Hay una DEMO en ejecución?",
-            description="Consulta en memoria; no usa la base de datos.")
+            description="Consulta en memoria; no usa la base de datos.\n\n"
+                        "**Autorización (4.3).** Requiere sesión y acceso a esa unidad.",
+            dependencies=[Depends(acceso_vehiculo)], responses=respuestas_error(401, 403, 404, 503))
 async def en_curso(id_vehiculo: int = IdVehiculo, c: Contenedor = Depends(get_contenedor)):
     ejecucion = c.ejecutor.en_curso(id_vehiculo)
     if ejecucion is None:
@@ -43,7 +48,7 @@ async def en_curso(id_vehiculo: int = IdVehiculo, c: Contenedor = Depends(get_co
 @router.post("/cancelar", response_model=Mensaje, summary="Cancelar la DEMO en ejecución",
              description="Detiene de inmediato la emisión de movimientos, deja el estado en DETENER y publica "
                          "`demo_cancelada` por WebSocket. Requiere `X-API-Key`.\n\n**SP:** `sp_actualizar_estado`",
-             dependencies=[Depends(requiere_api_key)], responses=respuestas_error(401, 403, 404, 503))
+             dependencies=[Depends(operar_vehiculo)], responses=respuestas_error(401, 403, 404, 503))
 async def cancelar(id_vehiculo: int = IdVehiculo, c: Contenedor = Depends(get_contenedor)):
     ejecucion = await c.ejecutor.cancelar(id_vehiculo)
     return {"mensaje": f"DEMO {ejecucion.id_demo} cancelada"}
@@ -51,7 +56,7 @@ async def cancelar(id_vehiculo: int = IdVehiculo, c: Contenedor = Depends(get_co
 
 @router.post("/{id_demo}/actualizar", response_model=DemoRespuesta, summary="Actualizar DEMO",
              description="Cambia solo los campos enviados.\n\n**SP:** `sp_obtener_demos`, `sp_actualizar_demo`",
-             responses=respuestas_error(404, 503))
+             dependencies=[Depends(operar_vehiculo)], responses=respuestas_error(401, 403, 404, 503))
 async def actualizar(datos: DemoActualizar, id_vehiculo: int = IdVehiculo, id_demo: int = IdDemo,
                      c: Contenedor = Depends(get_contenedor)):
     return await to_thread(c.demos.actualizar, id_vehiculo, id_demo, datos)
@@ -60,7 +65,7 @@ async def actualizar(datos: DemoActualizar, id_vehiculo: int = IdVehiculo, id_de
 @router.post("/{id_demo}/eliminar", response_model=Mensaje, summary="Eliminar DEMO",
              description="Borra la DEMO y sus movimientos. Requiere `X-API-Key`.\n\n"
                          "**SP:** `sp_obtener_demos`, `sp_eliminar_demo`",
-             dependencies=[Depends(requiere_api_key)], responses=respuestas_error(401, 403, 404, 503))
+             dependencies=[Depends(operar_vehiculo)], responses=respuestas_error(401, 403, 404, 503))
 async def eliminar(id_vehiculo: int = IdVehiculo, id_demo: int = IdDemo, c: Contenedor = Depends(get_contenedor)):
     await to_thread(c.demos.eliminar, id_vehiculo, id_demo)
     return {"mensaje": f"DEMO {id_demo} eliminada"}
@@ -75,7 +80,7 @@ async def eliminar(id_vehiculo: int = IdVehiculo, id_demo: int = IdDemo, c: Cont
                          "curso. Requiere `X-API-Key`.\n\n"
                          "**SP:** `sp_obtener_vehiculo`, `sp_obtener_demos`, `sp_obtener_movimientos_demo`, "
                          "`sp_obtener_comandos_vehiculo`, `sp_obtener_estado`, `sp_actualizar_estado`",
-             dependencies=[Depends(requiere_api_key)], responses=respuestas_error(401, 403, 404, 409, 503))
+             dependencies=[Depends(operar_vehiculo)], responses=respuestas_error(401, 403, 404, 409, 503))
 async def ejecutar(id_vehiculo: int = IdVehiculo, id_demo: int = IdDemo, c: Contenedor = Depends(get_contenedor)):
     info = await c.ejecutor.iniciar(id_vehiculo, id_demo)
     return {
@@ -91,7 +96,7 @@ async def ejecutar(id_vehiculo: int = IdVehiculo, id_demo: int = IdDemo, c: Cont
 @router.get("/{id_demo}/movimientos", response_model=list[MovimientoDemoRespuesta],
             summary="Movimientos ordenados de una DEMO",
             description="**SP:** `sp_obtener_demos`, `sp_obtener_movimientos_demo`",
-            responses=respuestas_error(404, 503))
+            dependencies=[Depends(acceso_vehiculo)], responses=respuestas_error(401, 403, 404, 503))
 async def listar_movimientos(id_vehiculo: int = IdVehiculo, id_demo: int = IdDemo,
                              c: Contenedor = Depends(get_contenedor)):
     return await to_thread(c.demos.listar_movimientos, id_vehiculo, id_demo)
@@ -103,7 +108,7 @@ async def listar_movimientos(id_vehiculo: int = IdVehiculo, id_demo: int = IdDem
                          "Devuelve la secuencia actualizada.\n\n"
                          "**SP:** `sp_obtener_demos`, `sp_obtener_comandos_vehiculo`, `sp_agregar_movimiento_demo`, "
                          "`sp_obtener_movimientos_demo`",
-             responses=respuestas_error(404, 409, 503))
+             dependencies=[Depends(operar_vehiculo)], responses=respuestas_error(401, 403, 404, 409, 503))
 async def agregar_movimiento(datos: MovimientoDemoCrear, id_vehiculo: int = IdVehiculo, id_demo: int = IdDemo,
                              c: Contenedor = Depends(get_contenedor)):
     return await to_thread(c.demos.agregar_movimiento, id_vehiculo, id_demo, datos)
@@ -114,7 +119,7 @@ async def agregar_movimiento(datos: MovimientoDemoCrear, id_vehiculo: int = IdVe
              description="Cambia solo los campos enviados y devuelve la secuencia actualizada.\n\n"
                          "**SP:** `sp_obtener_demos`, `sp_obtener_movimientos_demo`, "
                          "`sp_obtener_comandos_vehiculo`, `sp_actualizar_movimiento_demo`",
-             responses=respuestas_error(404, 409, 503))
+             dependencies=[Depends(operar_vehiculo)], responses=respuestas_error(401, 403, 404, 409, 503))
 async def actualizar_movimiento(datos: MovimientoDemoActualizar, id_vehiculo: int = IdVehiculo,
                                 id_demo: int = IdDemo, id_demo_movimiento: int = IdMovimiento,
                                 c: Contenedor = Depends(get_contenedor)):
@@ -125,7 +130,7 @@ async def actualizar_movimiento(datos: MovimientoDemoActualizar, id_vehiculo: in
              summary="Eliminar movimiento de la DEMO",
              description="Requiere `X-API-Key`.\n\n**SP:** `sp_obtener_demos`, `sp_obtener_movimientos_demo`, "
                          "`sp_eliminar_movimiento_demo`",
-             dependencies=[Depends(requiere_api_key)], responses=respuestas_error(401, 403, 404, 503))
+             dependencies=[Depends(operar_vehiculo)], responses=respuestas_error(401, 403, 404, 503))
 async def eliminar_movimiento(id_vehiculo: int = IdVehiculo, id_demo: int = IdDemo,
                               id_demo_movimiento: int = IdMovimiento, c: Contenedor = Depends(get_contenedor)):
     await to_thread(c.demos.eliminar_movimiento, id_vehiculo, id_demo, id_demo_movimiento)
