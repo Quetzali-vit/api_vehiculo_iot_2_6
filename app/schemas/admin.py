@@ -182,6 +182,7 @@ class UnidadRespuesta(BaseModel):
     correo_propietario: str | None = None
     conectado: bool = False
     comandos: int = 0
+    soporte_segundos: int = Field(default=0, description="Segundos de soporte autorizado que quedan (0 = sin autorización)")
 
 
 class UnidadCreada(BaseModel):
@@ -198,6 +199,17 @@ class MiVehiculo(BaseModel):
     id_modelo: int | None = None
     modelo: str | None = None
     conectado: bool = False
+    soporte_segundos: int = 0
+
+
+class SoporteSolicitud(BaseModel):
+    minutos: int = Field(default=30, ge=5, le=120, description="Tiempo que el Administrador podrá operar la unidad")
+
+
+class SoporteRespuesta(BaseModel):
+    id_vehiculo: int
+    activa: bool
+    segundos_restantes: int
 
 
 # ---------------------------------------------------------------------

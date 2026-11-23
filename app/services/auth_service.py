@@ -33,6 +33,9 @@ class Identidad:
         self.invitado = invitado
         self.id_vehiculo_invitado = id_vehiculo_invitado
         self.segundos_restantes = segundos_restantes
+        # True cuando un Admin opera una unidad vendida gracias a la autorización
+        # de soporte del comprador (queda así en el historial)
+        self.via_soporte = False
 
     @property
     def es_admin(self) -> bool:
@@ -45,8 +48,9 @@ class Identidad:
 
 
 class AuthService:
-    def __init__(self, db, usuarios, unidades, invitados, auditoria, demos_admin):
+    def __init__(self, db, usuarios, unidades, invitados, auditoria, demos_admin, soporte):
         self._db = db
+        self._soporte = soporte
         self._usuarios = usuarios
         self._unidades = unidades
         self._invitados = invitados
@@ -132,8 +136,9 @@ class AuthService:
 
         - Invitado: solo la unidad de exhibición que tiene reservada y vigente.
         - Usuario: solo las unidades de las que es propietario.
-        - Admin: puede VER cualquier unidad (es su inventario), pero NO puede
-          moverla si ya tiene dueño: eso necesita consentimiento del comprador.
+        - Admin: puede VER cualquier unidad (es su inventario), pero solo MUEVE
+          una unidad vendida mientras el comprador le tenga concedida una
+          autorización de soporte vigente (tabla autorizaciones_soporte).
         """
         identidad = self.exigir_identidad(identidad)
 
@@ -145,6 +150,9 @@ class AuthService:
         with self._db.transaccion() as sesion:
             unidad = self._unidades.obtener(sesion, id_vehiculo)
             reservada = self._invitados.reserva_activa(sesion, id_vehiculo) if operar else False
+            soporte = (self._soporte.vigente(sesion, id_vehiculo)
+                       if operar and identidad.es_admin and unidad and unidad["id_propietario"] is not None
+                       else None)
         if unidad is None:
             raise NoEncontrado(f"No existe la unidad {id_vehiculo}")
 
@@ -152,10 +160,12 @@ class AuthService:
 
         if identidad.es_admin:
             if operar and propietario is not None:
-                raise Prohibido(
-                    "La unidad pertenece a un comprador. El Administrador no puede operarla "
-                    "sin una autorización de soporte del dueño."
-                )
+                if soporte is None:
+                    raise Prohibido(
+                        "La unidad pertenece a un comprador. El Administrador solo puede operarla "
+                        "mientras el dueño le tenga autorizado el soporte."
+                    )
+                identidad.via_soporte = True
             if operar and reservada:
                 # Exclusividad: mientras un invitado la prueba, nadie más la mueve
                 raise Conflicto("La unidad está reservada por una prueba de invitado en curso")
@@ -211,6 +221,41 @@ class AuthService:
             raise NoEncontrado(f"La DEMO {id_demo} no pertenece al vehículo {id_vehiculo}")
         return demo
 
+    # -----------------------------------------------------------------
+    # Autorización de soporte operativo (la concede el COMPRADOR)
+    # -----------------------------------------------------------------
+    def _exigir_dueno(self, identidad: Identidad | None, id_vehiculo: int) -> Identidad:
+        identidad = self.exigir_identidad(identidad)
+        if identidad.invitado or identidad.es_admin:
+            raise Prohibido("Solo el comprador dueño de la unidad decide sobre su soporte")
+        with self._db.transaccion() as sesion:
+            unidad = self._unidades.obtener(sesion, id_vehiculo)
+        if unidad is None or unidad["id_propietario"] != identidad.id_usuario:
+            raise NoEncontrado(f"No existe la unidad {id_vehiculo}")
+        return identidad
+
+    def estado_soporte(self, identidad: Identidad | None, id_vehiculo: int) -> dict:
+        self._exigir_dueno(identidad, id_vehiculo)
+        with self._db.transaccion() as sesion:
+            vigente = self._soporte.vigente(sesion, id_vehiculo)
+        return _soporte_publico(id_vehiculo, vigente)
+
+    def autorizar_soporte(self, identidad: Identidad | None, id_vehiculo: int, minutos: int) -> dict:
+        identidad = self._exigir_dueno(identidad, id_vehiculo)
+        with self._db.transaccion() as sesion:
+            vigente = self._soporte.autorizar(sesion, id_vehiculo, identidad.id_usuario, minutos)
+            self._auditoria.registrar(sesion, identidad.id_usuario, identidad.etiqueta, "AUTORIZAR_SOPORTE",
+                                      "unidad", str(id_vehiculo), "OK", f"{minutos} minutos")
+        return _soporte_publico(id_vehiculo, vigente)
+
+    def revocar_soporte(self, identidad: Identidad | None, id_vehiculo: int) -> dict:
+        identidad = self._exigir_dueno(identidad, id_vehiculo)
+        with self._db.transaccion() as sesion:
+            revocadas = self._soporte.revocar(sesion, id_vehiculo, identidad.id_usuario)
+            self._auditoria.registrar(sesion, identidad.id_usuario, identidad.etiqueta, "REVOCAR_SOPORTE",
+                                      "unidad", str(id_vehiculo), "OK" if revocadas else "SIN_CAMBIO", None)
+        return _soporte_publico(id_vehiculo, None)
+
     def auditar(self, identidad: Identidad, accion: str, recurso: str, id_recurso: str | None,
                 detalle: str | None) -> None:
         with self._db.transaccion() as sesion:
@@ -233,6 +278,11 @@ class AuthService:
             self._auditoria.registrar(sesion, actor.id_usuario, actor.etiqueta, "CREAR",
                                       "usuario", str(id_usuario), "OK", f"rol={rol}")
             return id_usuario
+
+
+def _soporte_publico(id_vehiculo: int, vigente: dict | None) -> dict:
+    segundos = int(vigente["segundos_restantes"]) if vigente else 0
+    return {"id_vehiculo": id_vehiculo, "activa": segundos > 0, "segundos_restantes": max(segundos, 0)}
 
 
 def _restantes(invitado: dict) -> int:

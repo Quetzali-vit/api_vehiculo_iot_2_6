@@ -89,8 +89,14 @@ DROP PROCEDURE IF EXISTS sp_crear_demo_propietario;
 DROP PROCEDURE IF EXISTS sp_obtener_demos_visibles;
 DROP PROCEDURE IF EXISTS sp_obtener_demo;
 DROP PROCEDURE IF EXISTS sp_reserva_activa_vehiculo;
+-- 005 (soporte)
+DROP PROCEDURE IF EXISTS sp_cerrar_soporte_vencido;
+DROP PROCEDURE IF EXISTS sp_soporte_vigente;
+DROP PROCEDURE IF EXISTS sp_autorizar_soporte;
+DROP PROCEDURE IF EXISTS sp_revocar_soporte;
 
 -- 3. Tablas nuevas (en orden inverso a las dependencias)
+DROP TABLE IF EXISTS `autorizaciones_soporte`;
 DROP TABLE IF EXISTS `auditoria`;
 DROP TABLE IF EXISTS `sesiones_invitado`;
 DROP TABLE IF EXISTS `sesiones`;

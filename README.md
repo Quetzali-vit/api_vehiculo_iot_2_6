@@ -21,7 +21,7 @@ Ampliación **incremental** de la misma API: los 21 procedimientos y las rutas q
 
 | Rol | Es | Puede |
 |---|---|---|
-| `ADMIN` | La empresa | Gestionar modelos, unidades, clientes, asignaciones, demos de fábrica y ver la auditoría. Opera unidades **sin dueño**; una unidad vendida no la mueve sin autorización del comprador. |
+| `ADMIN` | La empresa | Gestionar modelos, unidades, clientes, asignaciones, demos de fábrica y ver la auditoría. Opera unidades **sin dueño**; una unidad vendida solo la monitorea, salvo que el comprador le conceda una **autorización de soporte** vigente. |
 | `USUARIO` | El comprador | Operar, monitorear y ver el historial **solo de sus unidades**; crear demos privadas y ejecutar las de fábrica. |
 | Invitado | Cliente potencial (sin cuenta) | Una sesión temporal sobre una unidad en `EXHIBICION`: exclusiva, con tiempo límite y solo comandos de movimiento y DETENER. |
 
@@ -54,6 +54,7 @@ usuarios 1───N auditoria
 | `002_procedimientos.sql` | 29 procedimientos nuevos; los 21 anteriores no se tocan |
 | `003_datos_iniciales.sql` | Roles, cuentas de demostración y el modelo de la unidad existente |
 | `004_verificacion.sql` | Solo consulta: conteos, columnas, llaves y procedimientos |
+| `005_soporte.sql` | Tabla `autorizaciones_soporte` y sus procedimientos (reversión: `005_soporte_REVERSION.sql`) |
 | `aplicar.py` | Respaldo → copia de prueba aislada → base real → comparación de conteos → registro |
 
 ```bash
@@ -68,6 +69,7 @@ MySQL confirma el DDL de forma implícita (un `ALTER` no se deshace con `ROLLBAC
 - Cada ruta protegida usa `Authorization: Bearer <token>`. El usuario, su rol y la propiedad de la unidad se leen **de la base en cada petición**; nunca del cuerpo. Un comprador que cambia el id en la URL recibe **404** (no se confirma que la unidad exista). 401 sin sesión, 403 sin permiso, 409 en conflictos de negocio.
 - **WebSocket:** `wss://…/ws/vehiculos/{id}?token=<token>`. Se valida identidad y acceso a la unidad antes de suscribir y en cada mensaje; cierra con 4401 (sin sesión), 4403 (sin permiso) o 4404. El ESP32 se identifica como dispositivo con `?clave=<API_KEY>`.
 - **Invitados:** la exclusividad la garantiza la base con el índice `UNIQUE (id_vehiculo, activa)`; dos peticiones simultáneas no pueden reservar la misma unidad. Un vigilante cada 20 s cierra las pruebas vencidas y manda DETENER por el camino normal (estado, historial y WebSocket). Mientras hay prueba vigente, ni el Admin mueve esa unidad.
+- **Soporte operativo:** el comprador concede desde «Mis vehículos» de 5 a 120 minutos (`POST /mis-vehiculos/{id}/soporte`) y puede revocarlo (`…/soporte/revocar`). Sin autorización vigente, la API responde 403 a cualquier movimiento del Admin sobre una unidad vendida; con ella, el movimiento queda en el historial como `WEB-SOPORTE`. Una sola autorización vigente por unidad (`UNIQUE id_vehiculo+activa`), y reasignar la unidad la cancela.
 - **Auditoría:** login, altas, cambios, asignaciones, demos y pruebas, con actor, acción, recurso y resultado. Nunca guarda contraseñas ni tokens.
 
 ### Endpoints nuevos
@@ -81,6 +83,7 @@ MySQL confirma el DDL de forma implícita (un `ALTER` no se deshace con `ROLLBAC
 | `GET·POST /admin/unidades` · `GET /admin/unidades/{id}` · `POST …/comercial` · `POST …/asignar` | ADMIN |
 | `GET /admin/auditoria` | ADMIN |
 | `GET /mis-vehiculos` | USUARIO |
+| `GET·POST /mis-vehiculos/{id}/soporte` · `POST …/soporte/revocar` | USUARIO dueño |
 | `GET /catalogo` | Público |
 | `POST /invitados/pruebas` · `GET …/actual` · `POST …/terminar` | Público / invitado |
 

@@ -12,7 +12,7 @@ from app.core.autorizacion import identidad_actual, solo_admin
 from app.dependencies import Contenedor, get_contenedor
 from app.schemas.admin import (AsignacionSolicitud, AuditoriaItem, CatalogoItem, MetricasRespuesta,
                                MiVehiculo, ModeloActualizar, ModeloCrear, ModeloCreado,
-                               ModeloRespuesta, UnidadComercial, UnidadCrear, UnidadCreada,
+                               ModeloRespuesta, SoporteRespuesta, SoporteSolicitud, UnidadComercial, UnidadCrear, UnidadCreada,
                                UnidadRespuesta, UsuarioActualizar, UsuarioCrear, UsuarioCreado,
                                UsuarioRespuesta)
 from app.schemas.comunes import respuestas_error
@@ -210,3 +210,41 @@ async def mis_vehiculos(identidad: Identidad = Depends(identidad_actual),
              responses=respuestas_error(503))
 async def catalogo(c: Contenedor = Depends(get_contenedor)):
     return await to_thread(c.admin.catalogo_publico)
+
+
+# =====================================================================
+# Autorización de soporte operativo (la concede el comprador)
+# =====================================================================
+IdMiUnidad = Path(ge=1, description="Unidad del comprador que inició sesión")
+
+
+@publico.get("/mis-vehiculos/{id_vehiculo}/soporte", response_model=SoporteRespuesta, tags=["Mis vehículos"],
+             summary="¿Tiene la empresa soporte autorizado en mi unidad?",
+             description="Solo el dueño puede consultarlo. **SP:** `sp_soporte_vigente`",
+             responses=respuestas_error(401, 403, 404, 503))
+async def estado_soporte(id_vehiculo: int = IdMiUnidad, identidad: Identidad = Depends(identidad_actual),
+                         c: Contenedor = Depends(get_contenedor)):
+    return await to_thread(c.auth.estado_soporte, identidad, id_vehiculo)
+
+
+@publico.post("/mis-vehiculos/{id_vehiculo}/soporte", response_model=SoporteRespuesta, tags=["Mis vehículos"],
+              summary="Autorizar soporte operativo",
+              description="El **comprador** permite que el Administrador opere su unidad durante 5 a 120 "
+                          "minutos. Sin esta autorización la API rechaza con 403 cualquier movimiento del "
+                          "Administrador sobre una unidad vendida. Queda en la auditoría.\n\n"
+                          "**SP:** `sp_autorizar_soporte`, `sp_registrar_auditoria`",
+              responses=respuestas_error(401, 403, 404, 409, 503))
+async def autorizar_soporte(datos: SoporteSolicitud, id_vehiculo: int = IdMiUnidad,
+                            identidad: Identidad = Depends(identidad_actual),
+                            c: Contenedor = Depends(get_contenedor)):
+    return await to_thread(c.auth.autorizar_soporte, identidad, id_vehiculo, datos.minutos)
+
+
+@publico.post("/mis-vehiculos/{id_vehiculo}/soporte/revocar", response_model=SoporteRespuesta,
+              tags=["Mis vehículos"], summary="Revocar el soporte",
+              description="Termina de inmediato la autorización. **SP:** `sp_revocar_soporte`, "
+                          "`sp_registrar_auditoria`",
+              responses=respuestas_error(401, 403, 404, 503))
+async def revocar_soporte(id_vehiculo: int = IdMiUnidad, identidad: Identidad = Depends(identidad_actual),
+                          c: Contenedor = Depends(get_contenedor)):
+    return await to_thread(c.auth.revocar_soporte, identidad, id_vehiculo)

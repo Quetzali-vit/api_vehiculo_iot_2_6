@@ -36,7 +36,7 @@ from app.core.config import get_settings  # noqa: E402
 CARPETA = Path(__file__).resolve().parent
 RESPALDOS = CARPETA / "respaldos"
 REGISTRO = CARPETA / "registro_aplicacion.txt"
-MIGRACIONES = ["001_estructura.sql", "002_procedimientos.sql", "003_datos_iniciales.sql"]
+MIGRACIONES = ["001_estructura.sql", "002_procedimientos.sql", "003_datos_iniciales.sql", "005_soporte.sql"]
 TABLAS_PREVIAS = ["vehiculos", "comandos", "estado_vehiculo", "historial_comandos", "demos", "demo_movimientos"]
 
 
@@ -289,7 +289,7 @@ def main() -> int:
         nuevos = cursor.fetchone()
     print(f"   procedimientos totales: {procs} | roles {nuevos['r']} | usuarios {nuevos['u']} | modelos {nuevos['m']}")
 
-    registrar(f"{inicio:%Y-%m-%d %H:%M:%S} | migración 4.3 (001-003) | base {base} | OK | "
+    registrar(f"{inicio:%Y-%m-%d %H:%M:%S} | migración 4.3 (001-003, 005) | base {base} | OK | "
               f"respaldo {respaldo.name} | conteos {antes} | procedimientos {procs}")
     print("== Migración aplicada correctamente ==")
     return 0

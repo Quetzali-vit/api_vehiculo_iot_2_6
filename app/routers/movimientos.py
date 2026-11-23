@@ -19,8 +19,9 @@ router = APIRouter(prefix="/vehiculos/{id_vehiculo}/movimientos", tags=["Movimie
                          "Si hay una DEMO en curso responde 409, salvo con DETENER, que la cancela primero.\n\n"
                          "**Autorización (4.3).** Requiere sesión. Un comprador solo mueve las unidades de "
                          "las que es propietario; un invitado, solo la unidad que tiene reservada y "
-                         "únicamente con los comandos permitidos en una prueba. El Administrador **no** "
-                         "puede mover una unidad ya vendida.\n\n"
+                         "únicamente con los comandos permitidos en una prueba. El Administrador solo "
+                         "mueve una unidad vendida si el dueño le autorizó el soporte (queda como "
+                         "`WEB-SOPORTE` en el historial).\n\n"
                          "**SP:** `sp_obtener_vehiculo`, `sp_obtener_comandos_vehiculo`, `sp_obtener_estado`, "
                          "`sp_actualizar_estado`, `sp_registrar_historial`",
              responses=respuestas_error(401, 403, 404, 409, 503))
@@ -47,5 +48,5 @@ def _origen(identidad: Identidad, pedido: str | None) -> str:
     if identidad.invitado:
         return "WEB-INVITADO"
     if identidad.es_admin:
-        return "WEB-ADMIN"
+        return "WEB-SOPORTE" if identidad.via_soporte else "WEB-ADMIN"
     return (pedido or "WEB-CONTROL")[:30]

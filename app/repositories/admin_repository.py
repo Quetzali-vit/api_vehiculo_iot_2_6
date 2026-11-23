@@ -152,3 +152,19 @@ class DemoAdminRepository:
     def obtener(self, sesion: SesionSP, id_demo: int) -> dict | None:
         filas = sesion.llamar("sp_obtener_demo", id_demo)
         return filas[0] if filas else None
+
+
+class SoporteRepository:
+    """Autorizaciones de soporte operativo que el comprador da al Administrador (005)."""
+
+    def vigente(self, sesion: SesionSP, id_vehiculo: int) -> dict | None:
+        filas = sesion.llamar("sp_soporte_vigente", id_vehiculo)
+        return filas[0] if filas else None
+
+    def autorizar(self, sesion: SesionSP, id_vehiculo: int, id_usuario: int, minutos: int) -> dict | None:
+        filas = sesion.llamar("sp_autorizar_soporte", id_vehiculo, id_usuario, minutos)
+        return filas[0] if filas else None
+
+    def revocar(self, sesion: SesionSP, id_vehiculo: int, id_usuario: int) -> int:
+        filas = sesion.llamar("sp_revocar_soporte", id_vehiculo, id_usuario)
+        return int(filas[0]["revocadas"]) if filas else 0

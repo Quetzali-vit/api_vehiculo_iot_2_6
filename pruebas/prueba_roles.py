@@ -154,10 +154,28 @@ def main() -> int:
     caso("P06", "Admin NO opera una unidad vendida", 403,
          http("POST", f"/vehiculos/{unidad}/movimientos", admin, {"codigo": 1})[0])
 
+    # ----- P18 autorización de soporte operativo -----
+    caso("P18", "Otro comprador no puede autorizar soporte en unidad ajena", 404,
+         http("POST", f"/mis-vehiculos/{unidad}/soporte", cliente2, {"minutos": 10})[0])
+    caso("P18", "El Admin no puede autorizarse a sí mismo", 403,
+         http("POST", f"/mis-vehiculos/{unidad}/soporte", admin, {"minutos": 10})[0])
+    estado, sop = http("POST", f"/mis-vehiculos/{unidad}/soporte", cliente, {"minutos": 10})
+    caso("P18", "El dueño autoriza soporte por 10 minutos", True, estado == 200 and sop.get("activa") is True)
+    caso("P18", "Con soporte autorizado el Admin SÍ opera la unidad", 201,
+         http("POST", f"/vehiculos/{unidad}/movimientos", admin, {"codigo": 9})[0])
+    estado, hist_s = http("GET", f"/vehiculos/{unidad}/historial", cliente)
+    caso("P18", "El historial lo marca como WEB-SOPORTE", "WEB-SOPORTE",
+         hist_s["movimientos"][0]["origen"] if estado == 200 else estado)
+    estado, sop = http("POST", f"/mis-vehiculos/{unidad}/soporte/revocar", cliente)
+    caso("P18", "El dueño revoca el soporte", True, estado == 200 and sop.get("activa") is False)
+    caso("P18", "Revocado, el Admin vuelve a ser rechazado", 403,
+         http("POST", f"/vehiculos/{unidad}/movimientos", admin, {"codigo": 9})[0])
+
     # ----- P08 historial 10 -----
     estado, hist = http("GET", f"/vehiculos/{unidad}/historial", cliente)
     caso("P08", "Historial de su unidad (máx. 10, del más nuevo)", True,
-         estado == 200 and hist["devueltos"] <= 10 and hist["movimientos"][0]["comando"] == "DETENER")
+         estado == 200 and hist["devueltos"] <= 10 and hist["movimientos"][0]["comando"] == "DETENER"
+         and [m["id_historial"] for m in hist["movimientos"]] == sorted((m["id_historial"] for m in hist["movimientos"]), reverse=True))
 
     # ----- P13 vehículo ajeno -----
     caso("P13", "Otro comprador pide el historial ajeno (cambia el ID)", 404,
@@ -248,8 +266,9 @@ def main() -> int:
     # ----- P17 auditoría -----
     estado, bitacora = http("GET", "/admin/auditoria?limite=100", admin)
     acciones = {b["accion"] for b in bitacora} if estado == 200 else set()
-    caso("P17", "Auditoría registra login, altas y asignaciones", True,
-         {"LOGIN", "CREAR", "ASIGNAR"}.issubset(acciones), f"acciones={sorted(acciones)}")
+    caso("P17", "Auditoría registra login, altas, asignaciones y soporte", True,
+         {"LOGIN", "CREAR", "ASIGNAR", "AUTORIZAR_SOPORTE", "REVOCAR_SOPORTE"}.issubset(acciones),
+         f"acciones={sorted(acciones)}")
     caso("P17", "La auditoría no guarda contraseñas ni tokens", True,
          estado == 200 and not any("Admin123" in json.dumps(b) or cliente in json.dumps(b) for b in bitacora))
 
