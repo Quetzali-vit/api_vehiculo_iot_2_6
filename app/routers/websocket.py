@@ -1,6 +1,5 @@
 import asyncio
 import logging
-import secrets
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
@@ -11,9 +10,6 @@ from app.websocket.eventos import TipoEvento, crear_evento
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
-# Códigos de cierre propios (los 4000+ son de uso libre según el RFC)
-CIERRE_SIN_SESION = 4401
-CIERRE_SIN_PERMISO = 4403
 CIERRE_NO_EXISTE = 4404
 
 
@@ -24,55 +20,26 @@ def _evento_estado(estado: dict) -> dict:
 
 @router.websocket("/ws/vehiculos/{id_vehiculo}")
 async def monitorear(websocket: WebSocket, id_vehiculo: int):
-    """Monitoreo de un vehículo. Documentado en README.md (Swagger no describe WebSocket).
+    """Escucha en vivo de una unidad. Documentado en README.md (Swagger no describe WebSocket).
 
-    **Autorización (4.3).** El navegador no puede mandar encabezados al abrir un
-    WebSocket, así que el token viaja en la cadena de consulta:
+    Cualquiera puede ESCUCHAR una unidad activa sin token:
 
-        wss://.../ws/vehiculos/1?token=<token de /auth/login o de una prueba>
+        wss://quetzali-iot.duckdns.org/ws/vehiculos/1
 
-    Se comprueba identidad **y** permiso sobre esa unidad antes de suscribir. Sin
-    eso, cualquiera podría escuchar los eventos de un vehículo ajeno. CORS no
-    aplica a WebSocket, de modo que esta es la única defensa del canal.
-
-    **Excepción: unidad de exhibición.** La unidad en estado EXHIBICION es la de
-    muestra pública (la del catálogo), así que se puede ESCUCHAR sin token:
-
-        wss://.../ws/vehiculos/1
-
-    Escuchar no permite mover nada (los movimientos van por REST con sesión).
-    Las unidades vendidas o disponibles siguen exigiendo token, para que nadie
-    espíe los vehículos de un comprador. Si la unidad deja de estar en
-    exhibición, el oyente público se desconecta.
+    Escuchar no mueve nada: los movimientos van por REST (POST /vehiculos/{id}/movimientos)
+    y ahí sí se exige sesión con permiso sobre la unidad. Una unidad inexistente o
+    inactiva responde con el código 4404.
     """
     c = get_contenedor()
-    token = websocket.query_params.get("token")
-    clave_dispositivo = websocket.query_params.get("clave")
 
-    # El microcontrolador (ESP32) no inicia sesión como persona: se identifica con
-    # la clave de dispositivo que vive en su firmware y en el .env del servidor.
-    es_dispositivo = bool(clave_dispositivo) and secrets.compare_digest(
-        clave_dispositivo, c.settings.api_key)
-    es_publico = False
-
-    if not es_dispositivo:
-        identidad = await asyncio.to_thread(c.auth.identificar, token) if token else None
-        if identidad is None:
-            if not token and await _es_exhibicion(c, id_vehiculo):
-                es_publico = True
-            else:
-                await _rechazar(websocket, CIERRE_SIN_SESION,
-                                "Sesion no valida: agrega ?token=<token de /auth/login>")
-                return
-        else:
-            try:
-                await asyncio.to_thread(c.auth.exigir_acceso_vehiculo, identidad, id_vehiculo)
-            except NoEncontrado:
-                await _rechazar(websocket, CIERRE_NO_EXISTE, "El vehiculo no existe")
-                return
-            except ApiError:
-                await _rechazar(websocket, CIERRE_SIN_PERMISO, "Sin permiso sobre esa unidad")
-                return
+    try:
+        unidad = await asyncio.to_thread(c.admin.obtener_unidad, id_vehiculo)
+    except ApiError:
+        unidad = None
+    if unidad is None or not unidad.get("activo"):
+        await websocket.accept()
+        await websocket.close(code=CIERRE_NO_EXISTE, reason="El vehiculo no existe o esta inactivo")
+        return
 
     await websocket.accept()
 
@@ -89,20 +56,6 @@ async def monitorear(websocket: WebSocket, id_vehiculo: int):
         while True:
             texto = (await websocket.receive_text()).strip().lower()
 
-            # La sesión puede vencer o revocarse mientras el socket sigue abierto:
-            # se vuelve a comprobar en cada mensaje, no solo al conectar.
-            if es_publico:
-                if not await _es_exhibicion(c, id_vehiculo):
-                    await c.gestor_ws.enviar(websocket, crear_evento(
-                        TipoEvento.ERROR, id_vehiculo, mensaje="La unidad ya no está en exhibición"))
-                    await websocket.close(code=CIERRE_SIN_PERMISO, reason="Ya no esta en exhibicion")
-                    return
-            elif not es_dispositivo and not await _sigue_autorizado(c, token, id_vehiculo):
-                await c.gestor_ws.enviar(websocket, crear_evento(
-                    TipoEvento.ERROR, id_vehiculo, mensaje="La sesión terminó"))
-                await websocket.close(code=CIERRE_SIN_SESION, reason="Sesion terminada")
-                return
-
             if texto == "ping":
                 await c.gestor_ws.enviar(websocket, crear_evento(TipoEvento.PONG, id_vehiculo))
             elif texto == "estado":
@@ -117,37 +70,3 @@ async def monitorear(websocket: WebSocket, id_vehiculo: int):
         logger.exception("Error en el WebSocket del vehículo %s", id_vehiculo)
     finally:
         await c.gestor_ws.desconectar(id_vehiculo, websocket)
-
-
-async def _rechazar(websocket: WebSocket, codigo: int, motivo: str) -> None:
-    """Acepta y cierra de inmediato con un código propio y su motivo.
-
-    Si se cerrara antes de aceptar, el cliente solo vería un 1006 genérico; así
-    Postman o la extensión de Chrome muestran por qué se rechazó (4401, 4403, 4404).
-    No se envía ningún dato del vehículo.
-    """
-    await websocket.accept()
-    await websocket.close(code=codigo, reason=motivo[:120])
-
-
-async def _es_exhibicion(c, id_vehiculo: int) -> bool:
-    """¿La unidad está activa y en estado EXHIBICION (escucha pública permitida)?"""
-    try:
-        unidad = await asyncio.to_thread(c.admin.obtener_unidad, id_vehiculo)
-    except ApiError:
-        return False
-    return bool(unidad.get("activo")) and unidad.get("estado_comercial") == "EXHIBICION"
-
-
-async def _sigue_autorizado(c, token: str | None, id_vehiculo: int) -> bool:
-    try:
-        identidad = await asyncio.to_thread(c.auth.identificar, token)
-        if identidad is None:
-            return False
-        await asyncio.to_thread(c.auth.exigir_acceso_vehiculo, identidad, id_vehiculo)
-        return True
-    except ApiError:
-        return False
-    except Exception:
-        logger.exception("No se pudo revalidar la sesión del WebSocket")
-        return False

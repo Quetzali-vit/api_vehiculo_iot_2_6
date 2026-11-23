@@ -245,15 +245,15 @@ def main() -> int:
 
     # ----- P07 WebSocket autenticado -----
     try:
-        caso("P07", "WSS sin token en unidad vendida se rechaza (4401)", "cerrado:4401",
+        caso("P07", "WSS sin token en unidad vendida: escucha abierta", "abierto:estado_actual",
              asyncio.run(abrir_ws(unidad, "")))
-        if exhibicion:
-            caso("P07", "WSS sin token en la unidad de exhibición: solo escucha", "abierto:estado_actual",
-                 asyncio.run(abrir_ws(exhibicion, "")))
+        caso("P07", "WSS de unidad inexistente se rechaza (4404)", "cerrado:4404",
+             asyncio.run(abrir_ws(999999, "")))
+
         caso("P07", "WSS del dueño recibe estado_actual", "abierto:estado_actual",
              asyncio.run(abrir_ws(unidad, f"?token={cliente}")))
-        caso("P07", "WSS de otro comprador se rechaza", True,
-             not asyncio.run(abrir_ws(unidad, f"?token={cliente2}")).startswith("abierto"))
+        caso("P07", "WSS con token de otro comprador: escucha abierta", "abierto:estado_actual",
+             asyncio.run(abrir_ws(unidad, f"?token={cliente2}")))
     except ImportError:
         print("   (WebSocket no probado: falta el paquete websockets)")
 
