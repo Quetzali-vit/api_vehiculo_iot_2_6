@@ -84,17 +84,6 @@ async def abrir_ws(id_vehiculo: int, consulta: str) -> str:
         return f"cerrado:{e.rcvd.code if e.rcvd else '?'}"
 
 
-async def abrir_ws_general() -> str:
-    """Conecta al canal general (sin id de unidad) y devuelve el primer evento recibido."""
-    import websockets
-    try:
-        async with websockets.connect(f"{WS}/ws/vehiculos", open_timeout=15) as ws:
-            mensaje = json.loads(await asyncio.wait_for(ws.recv(), timeout=10))
-            return f"abierto:{mensaje.get('evento')}"
-    except websockets.exceptions.ConnectionClosed as e:
-        return f"cerrado:{e.rcvd.code if e.rcvd else '?'}"
-
-
 def main() -> int:
     print(f"== Pruebas 4.3 contra {BASE} ==\n")
 
@@ -258,8 +247,6 @@ def main() -> int:
     try:
         caso("P07", "WSS sin token en unidad vendida: escucha abierta", "abierto:estado_actual",
              asyncio.run(abrir_ws(unidad, "")))
-        caso("P07", "Canal general (una URL para todas las unidades): abierto", "abierto:estado_actual",
-             asyncio.run(abrir_ws_general()))
         caso("P07", "WSS de unidad inexistente se rechaza (4404)", "cerrado:4404",
              asyncio.run(abrir_ws(999999, "")))
 

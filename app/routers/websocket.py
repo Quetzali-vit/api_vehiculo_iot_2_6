@@ -6,7 +6,6 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from app.core.exceptions import ApiError, NoEncontrado
 from app.dependencies import get_contenedor
 from app.websocket.eventos import TipoEvento, crear_evento
-from app.websocket.manager import CANAL_GENERAL
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -71,46 +70,3 @@ async def monitorear(websocket: WebSocket, id_vehiculo: int):
         logger.exception("Error en el WebSocket del vehículo %s", id_vehiculo)
     finally:
         await c.gestor_ws.desconectar(id_vehiculo, websocket)
-
-
-@router.websocket("/ws/vehiculos")
-async def monitorear_todas(websocket: WebSocket):
-    """Canal general: escucha en vivo TODAS las unidades activas con una sola URL, sin token.
-
-        wss://quetzali-iot.duckdns.org/ws/vehiculos
-
-    Al conectarse recibe un `estado_actual` por cada unidad activa; después llega cada
-    evento de cualquier unidad, con su `id_vehiculo`. Escuchar no mueve nada.
-    """
-    c = get_contenedor()
-    await websocket.accept()
-
-    try:
-        unidades = await asyncio.to_thread(c.admin.listar_unidades)
-    except ApiError as error:
-        await websocket.close(code=1011, reason=error.mensaje[:120])
-        return
-
-    await c.gestor_ws.conectar(CANAL_GENERAL, websocket)
-    try:
-        for unidad in unidades:
-            if not unidad.get("activo"):
-                continue
-            try:
-                estado = await asyncio.to_thread(c.estados.obtener, unidad["id_vehiculo"])
-            except ApiError:
-                continue
-            await c.gestor_ws.enviar(websocket, _evento_estado(estado))
-        while True:
-            texto = (await websocket.receive_text()).strip().lower()
-            if texto == "ping":
-                await c.gestor_ws.enviar(websocket, crear_evento(TipoEvento.PONG, CANAL_GENERAL))
-            else:
-                await c.gestor_ws.enviar(websocket, crear_evento(
-                    TipoEvento.ERROR, CANAL_GENERAL, mensaje="Mensaje no reconocido. Usa 'ping'."))
-    except WebSocketDisconnect:
-        pass
-    except Exception:
-        logger.exception("Error en el canal general de WebSocket")
-    finally:
-        await c.gestor_ws.desconectar(CANAL_GENERAL, websocket)
