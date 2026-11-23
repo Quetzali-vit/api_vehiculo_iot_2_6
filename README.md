@@ -13,6 +13,92 @@ Incluye servicios GET y POST, monitoreo por **WebSocket** y ejecución de DEMO.
 >
 > En un equipo local también se puede ejecutar en `http://localhost:8000`.
 
+## Práctica 4.3 — Administración comercial, roles y autorización
+
+Ampliación **incremental** de la misma API: los 21 procedimientos y las rutas que usan CONTROL y MONITOREO siguen ahí, ahora protegidas por sesión. De 27 operaciones se pasó a **50**; solo cinco quedan públicas: `GET /`, `GET /salud`, `POST /auth/login`, `GET /catalogo` y `POST /invitados/pruebas`.
+
+### Modelo de negocio
+
+| Rol | Es | Puede |
+|---|---|---|
+| `ADMIN` | La empresa | Gestionar modelos, unidades, clientes, asignaciones, demos de fábrica y ver la auditoría. Opera unidades **sin dueño**; una unidad vendida no la mueve sin autorización del comprador. |
+| `USUARIO` | El comprador | Operar, monitorear y ver el historial **solo de sus unidades**; crear demos privadas y ejecutar las de fábrica. |
+| Invitado | Cliente potencial (sin cuenta) | Una sesión temporal sobre una unidad en `EXHIBICION`: exclusiva, con tiempo límite y solo comandos de movimiento y DETENER. |
+
+### Diagrama entidad-relación
+
+```
+roles 1───N usuarios 1───N sesiones
+                │ 1
+                │
+                N (id_propietario, NULL = sin dueño)
+modelos 1───N vehiculos (UNIDAD física) 1───N comandos
+                │ 1        │ 1───1 estado_vehiculo
+                │          │ 1───N historial_comandos
+                │          │ 1───N sesiones_invitado (UNIQUE id_vehiculo+activa)
+                │          └─1───N demos (id_propietario NULL = de fábrica) 1───N demo_movimientos
+usuarios 1───N auditoria
+```
+
+- **MODELO** (`modelos`) es lo que se vende; **UNIDAD** (`vehiculos`) es la pieza física con `numero_serie` único, `estado_comercial` (DISPONIBLE, VENDIDO, EXHIBICION, INACTIVO) y `id_propietario`. El `id_vehiculo` no cambió: es el mismo que usan CONTROL y MONITOREO.
+- Tablas nuevas: `roles`, `usuarios`, `sesiones`, `modelos`, `sesiones_invitado`, `auditoria`. Columnas nuevas: `vehiculos.id_modelo`, `id_propietario`, `numero_serie`, `estado_comercial`; `demos.id_propietario`. Todas admiten NULL o tienen valor por omisión, así que ninguna fila previa quedó inválida.
+- Baja lógica en usuarios, modelos y unidades (`activo`). No se borra nada con historial.
+
+### Migraciones (`migraciones/`)
+
+| Archivo | Contenido |
+|---|---|
+| `000_RESPALDO_Y_GUIA.md` | Respaldo, orden de aplicación y reversión |
+| `001_estructura.sql` | Tablas y columnas (idempotente: revisa `information_schema` antes de cada ALTER) |
+| `001_estructura_REVERSION.sql` | Devuelve el esquema al de 4.2 |
+| `002_procedimientos.sql` | 29 procedimientos nuevos; los 21 anteriores no se tocan |
+| `003_datos_iniciales.sql` | Roles, cuentas de demostración y el modelo de la unidad existente |
+| `004_verificacion.sql` | Solo consulta: conteos, columnas, llaves y procedimientos |
+| `aplicar.py` | Respaldo → copia de prueba aislada → base real → comparación de conteos → registro |
+
+```bash
+.venv\Scripts\python.exe migraciones\aplicar.py
+```
+
+MySQL confirma el DDL de forma implícita (un `ALTER` no se deshace con `ROLLBACK`); por eso `aplicar.py` respalda primero, prueba en una base `vehiculo_iot_prueba_<fecha>` y solo si los conteos se conservan toca la real. **Aplicada en Amazon RDS el 23/11/2026:** respaldo de 158 934 bytes, copia de prueba correcta y conteos idénticos antes/después (859 movimientos de historial, 21 comandos, 5 demos, 21 pasos). Total: 50 procedimientos.
+
+### Autenticación y autorización
+
+- `POST /auth/login` devuelve un token aleatorio de 256 bits. La base guarda **solo su SHA-256** en `sesiones`; la contraseña se guarda como hash PBKDF2-SHA256 (210 000 iteraciones), sin dependencias nuevas. `POST /auth/logout` revoca el token; expira a las 8 h.
+- Cada ruta protegida usa `Authorization: Bearer <token>`. El usuario, su rol y la propiedad de la unidad se leen **de la base en cada petición**; nunca del cuerpo. Un comprador que cambia el id en la URL recibe **404** (no se confirma que la unidad exista). 401 sin sesión, 403 sin permiso, 409 en conflictos de negocio.
+- **WebSocket:** `wss://…/ws/vehiculos/{id}?token=<token>`. Se valida identidad y acceso a la unidad antes de suscribir y en cada mensaje; cierra con 4401 (sin sesión), 4403 (sin permiso) o 4404. El ESP32 se identifica como dispositivo con `?clave=<API_KEY>`.
+- **Invitados:** la exclusividad la garantiza la base con el índice `UNIQUE (id_vehiculo, activa)`; dos peticiones simultáneas no pueden reservar la misma unidad. Un vigilante cada 20 s cierra las pruebas vencidas y manda DETENER por el camino normal (estado, historial y WebSocket). Mientras hay prueba vigente, ni el Admin mueve esa unidad.
+- **Auditoría:** login, altas, cambios, asignaciones, demos y pruebas, con actor, acción, recurso y resultado. Nunca guarda contraseñas ni tokens.
+
+### Endpoints nuevos
+
+| Método y ruta | Rol |
+|---|---|
+| `POST /auth/login` · `POST /auth/logout` · `GET /auth/yo` | Público / sesión |
+| `GET /admin/metricas` | ADMIN |
+| `GET·POST /admin/usuarios` · `GET /admin/usuarios/{id}` · `POST …/actualizar` | ADMIN |
+| `GET·POST /admin/modelos` · `GET /admin/modelos/{id}` · `POST …/actualizar` | ADMIN |
+| `GET·POST /admin/unidades` · `GET /admin/unidades/{id}` · `POST …/comercial` · `POST …/asignar` | ADMIN |
+| `GET /admin/auditoria` | ADMIN |
+| `GET /mis-vehiculos` | USUARIO |
+| `GET /catalogo` | Público |
+| `POST /invitados/pruebas` · `GET …/actual` · `POST …/terminar` | Público / invitado |
+
+Las rutas de 4.1/4.2 ahora exigen sesión y acceso a la unidad; las de DEMO distinguen de fábrica (las edita el Admin) y privadas (solo su dueño).
+
+### Variables de entorno (solo nombres)
+
+`DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`, `API_KEY` (clave del dispositivo), `ORIGEN_MOVIMIENTO`, `CORS_ORIGINS`, `HOST`, `PORT`.
+
+### Pruebas
+
+```bash
+python pruebas/prueba_roles.py                          # contra la API publicada
+python pruebas/prueba_roles.py http://127.0.0.1:8000    # contra una API local
+```
+
+53 casos P00–P17 (login, alta de unidad y cliente, asignación, aislamiento entre compradores, control, WSS, historial de 10, demo persistente, ejecución y cancelación, invitado, rechazos 403/404, exclusividad, reasignación con revocación inmediata, logout y auditoría). Resultado contra `https://quetzali-iot.duckdns.org` el 23/11/2026: **53/53 correctos**.
+
 ## Arquitectura
 
 ```
