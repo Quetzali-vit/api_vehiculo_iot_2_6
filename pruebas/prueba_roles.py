@@ -126,6 +126,11 @@ def main() -> int:
     caso("P03", "Admin lista clientes (sin hashes)", True,
          estado == 200 and all("hash_contrasena" not in u for u in usuarios))
     ids = {u["correo"]: u["id_usuario"] for u in usuarios}
+    id_admin = ids[ADMIN[0]]
+    caso("P19", "El Admin no puede desactivar su propia cuenta", 409,
+         http("POST", f"/admin/usuarios/{id_admin}/actualizar", admin, {"activo": False})[0])
+    caso("P19", "El Admin no puede quitarse su rol", 409,
+         http("POST", f"/admin/usuarios/{id_admin}/actualizar", admin, {"rol": "USUARIO"})[0])
     estado, _ = http("POST", "/admin/usuarios", admin, {
         "nombre": "Cliente nuevo", "correo": f"nuevo{SUFIJO}@iot.com", "contrasena": "Cliente123#"})
     caso("P03", "Admin da de alta un cliente", 201, estado)

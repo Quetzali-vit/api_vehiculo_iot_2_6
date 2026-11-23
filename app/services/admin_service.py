@@ -42,8 +42,22 @@ class AdminService:
         hash_nuevo = hashear_contrasena(datos.contrasena) if datos.contrasena else None
 
         with self._db.transaccion() as sesion:
-            if self._usuarios.obtener(sesion, id_usuario) is None:
+            actual = self._usuarios.obtener(sesion, id_usuario)
+            if actual is None:
                 raise NoEncontrado(f"No existe el usuario {id_usuario}")
+
+            # Un administrador no puede dejarse fuera a sí mismo, y la plataforma
+            # nunca debe quedarse sin al menos un administrador activo.
+            se_desactiva = datos.activo is False
+            pierde_admin = datos.rol is not None and datos.rol != "ADMIN"
+            if id_usuario == actor.id_usuario and (se_desactiva or pierde_admin):
+                raise Conflicto("No puedes desactivar tu propia cuenta ni quitarte el rol de Administrador. "
+                                "Pídeselo a otro administrador.")
+            if actual["rol"] == "ADMIN" and actual["activo"] and (se_desactiva or pierde_admin):
+                admins = [u for u in self._usuarios.listar(sesion) if u["rol"] == "ADMIN" and u["activo"]]
+                if len(admins) <= 1:
+                    raise Conflicto("Es el único administrador activo: la plataforma se quedaría sin administración.")
+
             actualizado = self._usuarios.actualizar(sesion, id_usuario, datos.nombre, datos.telefono,
                                                     hash_nuevo, datos.rol, datos.activo)
             self._auditoria.registrar(sesion, actor.id_usuario, actor.etiqueta, "ACTUALIZAR",
