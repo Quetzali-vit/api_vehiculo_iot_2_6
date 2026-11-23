@@ -70,3 +70,4 @@ async def monitorear(websocket: WebSocket, id_vehiculo: int):
         logger.exception("Error en el WebSocket del vehículo %s", id_vehiculo)
     finally:
         await c.gestor_ws.desconectar(id_vehiculo, websocket)
+
