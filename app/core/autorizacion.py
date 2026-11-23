@@ -78,6 +78,19 @@ async def operar_vehiculo(
     return await to_thread(c.auth.exigir_acceso_vehiculo, identidad, id_vehiculo, True)
 
 
+async def gestionar_demos(
+    id_vehiculo: int,
+    identidad: Identidad = Depends(identidad_actual),
+    c: Contenedor = Depends(get_contenedor),
+) -> Identidad:
+    """Para crear, editar o borrar DEMO y sus movimientos.
+
+    El Administrador puede hacerlo en cualquier carrito, también en los vendidos:
+    es gestión de su catálogo, no mover la unidad. Un comprador solo en los suyos.
+    """
+    return await to_thread(c.auth.exigir_gestion_demos, identidad, id_vehiculo)
+
+
 async def token_actual(
     credenciales: HTTPAuthorizationCredentials | None = Security(esquema_bearer),
 ) -> str:

@@ -262,3 +262,41 @@ class PruebaRespuesta(BaseModel):
 
 class PruebaCreada(PruebaRespuesta):
     token: str = Field(description="Envíalo como Authorization: Bearer <token> mientras dure la prueba")
+
+
+# ---------------------------------------------------------------------
+# Gestión del administrador (006)
+# ---------------------------------------------------------------------
+class UnidadEditar(BaseModel):
+    """Solo se cambian los campos enviados. «Eliminar» = activo: false (baja lógica)."""
+
+    nombre: str | None = Field(default=None, min_length=2, max_length=80)
+    descripcion: str | None = Field(default=None, max_length=255)
+    microcontrolador: str | None = Field(default=None, max_length=50)
+    activo: bool | None = None
+    id_modelo: int | None = Field(default=None, ge=1)
+    numero_serie: str | None = Field(default=None, max_length=40)
+    estado_comercial: EstadoComercial | None = None
+
+
+class ModeloComandoCrear(BaseModel):
+    nombre: str = Field(min_length=1, max_length=60, pattern=r"^[A-Za-z0-9_ ]+$", examples=["CLAXON"])
+    codigo: int = Field(ge=0, le=9999, examples=[10])
+    descripcion: str | None = Field(default=None, max_length=255)
+
+
+class ModeloComandoActivo(BaseModel):
+    nombre: str = Field(min_length=1, max_length=60)
+    activo: bool
+
+
+class PasoDemoModelo(BaseModel):
+    comando: str = Field(min_length=1, max_length=60, examples=["AVANZAR"])
+    duracion_ms: int = Field(ge=1, le=60000, examples=[2000])
+    pausa_ms: int = Field(default=0, ge=0, le=60000)
+
+
+class ModeloDemoCrear(BaseModel):
+    nombre: str = Field(min_length=1, max_length=80, examples=["Demo de fábrica"])
+    descripcion: str | None = Field(default=None, max_length=255)
+    pasos: list[PasoDemoModelo] = Field(min_length=1, max_length=30)

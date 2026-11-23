@@ -168,3 +168,16 @@ class SoporteRepository:
     def revocar(self, sesion: SesionSP, id_vehiculo: int, id_usuario: int) -> int:
         filas = sesion.llamar("sp_revocar_soporte", id_vehiculo, id_usuario)
         return int(filas[0]["revocadas"]) if filas else 0
+
+
+class SesionesRepository:
+    """Vistas de sesiones y bitácora para la cuenta de cliente del administrador (006)."""
+
+    def sesiones_activas(self, sesion: SesionSP) -> list[dict]:
+        return sesion.llamar("sp_sesiones_activas")
+
+    def pruebas_activas(self, sesion: SesionSP) -> list[dict]:
+        return sesion.llamar("sp_pruebas_activas")
+
+    def auditoria_usuario(self, sesion: SesionSP, id_usuario: int, correo: str, limite: int) -> list[dict]:
+        return sesion.llamar("sp_auditoria_usuario", id_usuario, correo, limite)

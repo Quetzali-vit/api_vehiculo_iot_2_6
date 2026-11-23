@@ -4,8 +4,9 @@ from app.core.config import get_settings
 from app.db.database import Database
 from app.repositories.admin_repository import (AuditoriaRepository, DemoAdminRepository,
                                                InvitadoRepository, ModeloRepository,
-                                               SoporteRepository, UnidadRepository,
-                                               UsuarioRepository)
+                                               SesionesRepository, SoporteRepository,
+                                               UnidadRepository, UsuarioRepository)
+from app.services.gestion_service import GestionService
 from app.repositories.comando_repository import ComandoRepository
 from app.repositories.demo_repository import DemoRepository
 from app.repositories.estado_repository import EstadoRepository
@@ -48,6 +49,7 @@ class Contenedor:
         self._auditoria = AuditoriaRepository()
         self._demos_admin = DemoAdminRepository()
         self._soporte = SoporteRepository()
+        self._sesiones = SesionesRepository()
 
     @cached_property
     def vehiculos(self) -> VehiculoService:
@@ -101,6 +103,11 @@ class Contenedor:
     @cached_property
     def demos_admin(self) -> DemoAdminRepository:
         return self._demos_admin
+
+    @cached_property
+    def gestion(self) -> GestionService:
+        return GestionService(self.db, self._usuarios, self._modelos, self._unidades, self._vehiculos,
+                              self._comandos, self._demos, self._sesiones, self._auditoria)
 
 
 @lru_cache

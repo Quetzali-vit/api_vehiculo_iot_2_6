@@ -36,7 +36,7 @@ from app.core.config import get_settings  # noqa: E402
 CARPETA = Path(__file__).resolve().parent
 RESPALDOS = CARPETA / "respaldos"
 REGISTRO = CARPETA / "registro_aplicacion.txt"
-MIGRACIONES = ["001_estructura.sql", "002_procedimientos.sql", "003_datos_iniciales.sql", "005_soporte.sql"]
+MIGRACIONES = ["001_estructura.sql", "002_procedimientos.sql", "003_datos_iniciales.sql", "005_soporte.sql", "006_gestion_admin.sql"]
 TABLAS_PREVIAS = ["vehiculos", "comandos", "estado_vehiculo", "historial_comandos", "demos", "demo_movimientos"]
 
 

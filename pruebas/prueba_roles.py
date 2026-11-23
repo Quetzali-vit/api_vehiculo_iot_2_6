@@ -267,6 +267,56 @@ def main() -> int:
     caso("P04", "El historial se conservó tras la reasignación", True,
          estado == 200 and hist2["total_registrados"] >= 3)
 
+    # ----- P20-P25 gestión del administrador (006) -----
+    caso("P20", "Admin edita los datos de un carrito", 200,
+         http("POST", f"/admin/unidades/{unidad}/editar", admin, {"descripcion": "Editada por el admin"})[0])
+    caso("P20", "Comprador no puede editar carritos", 403,
+         http("POST", f"/admin/unidades/{unidad}/editar", cliente2, {"descripcion": "No"})[0])
+    caso("P20", "Admin da de baja un carrito (activo: false)", 200,
+         http("POST", f"/admin/unidades/{unidad}/editar", admin, {"activo": False})[0])
+    caso("P20", "Admin reactiva el carrito", 200,
+         http("POST", f"/admin/unidades/{unidad}/editar", admin, {"activo": True})[0])
+    caso("P21", "Sesiones activas: el Admin sí", 200, http("GET", "/admin/sesiones", admin)[0])
+    caso("P21", "Sesiones activas: el comprador no", 403, http("GET", "/admin/sesiones", cliente2)[0])
+    estado, cuenta = http("GET", f"/admin/clientes/{ids[CLIENTE2[0]]}/cuenta", admin)
+    caso("P22", "Cuenta de cliente: carritos, sesiones y bitácora", True,
+         estado == 200 and {"carritos", "sesiones_activas", "bitacora"} <= set(cuenta))
+    caso("P22", "Comprador no ve la cuenta de otro cliente", 403,
+         http("GET", f"/admin/clientes/{ids[CLIENTE2[0]]}/cuenta", cliente2)[0])
+    nombre_nuevo, codigo_nuevo = f"CLAXON_{SUFIJO}", int(SUFIJO[-4:])
+    caso("P23", "Admin agrega un movimiento al modelo (a todas sus unidades)", 200,
+         http("POST", f"/admin/modelos/{id_modelo}/comandos", admin,
+              {"nombre": nombre_nuevo, "codigo": codigo_nuevo, "descripcion": "Prueba"})[0])
+    caso("P23", "Admin deshabilita ese movimiento del modelo", 200,
+         http("POST", f"/admin/modelos/{id_modelo}/comandos/activo", admin,
+              {"nombre": nombre_nuevo, "activo": False})[0])
+    caso("P23", "Resumen de movimientos del modelo", 200,
+         http("GET", f"/admin/modelos/{id_modelo}/comandos", admin)[0])
+    caso("P24", "Admin crea una demo de fábrica para el modelo", 200,
+         http("POST", f"/admin/modelos/{id_modelo}/demos", admin,
+              {"nombre": f"Fábrica {SUFIJO}", "pasos": [{"comando": "AVANZAR", "duracion_ms": 500, "pausa_ms": 0}]})[0])
+    estado, nueva = http("POST", f"/vehiculos/{unidad}/demos", admin,
+                         {"nombre": f"Demo del admin {SUFIJO}", "descripcion": "Para el cliente"})
+    caso("P25", "Admin crea una demo en el carrito vendido", 201, estado)
+    id_demo_admin = nueva.get("id_demo") if estado == 201 else None
+    estado, lista = http("GET", f"/vehiculos/{unidad}/demos", admin)
+    caso("P25", "Admin ve las demos del carrito del cliente", True,
+         estado == 200 and any(d["id_demo"] == id_demo_admin for d in lista))
+    caso("P25", "Esa demo queda como PRIVADA del dueño actual", "PRIVADA",
+         next((d["tipo"] for d in lista if d["id_demo"] == id_demo_admin), None))
+    comandos_adm = {c["nombre"]: c["id_comando"] for c in http("GET", f"/vehiculos/{unidad}/comandos", admin)[1]}
+    caso("P25", "Admin agrega movimientos a la demo del cliente", 201,
+         http("POST", f"/vehiculos/{unidad}/demos/{id_demo_admin}/movimientos", admin,
+              {"id_comando": comandos_adm["AVANZAR"], "orden": 1, "duracion_ms": 500})[0])
+    caso("P25", "Admin no ejecuta esa demo en un carrito vendido sin soporte", 403,
+         http("POST", f"/vehiculos/{unidad}/demos/{id_demo_admin}/ejecutar", admin)[0])
+    caso("P25", "Admin no mueve el carrito vendido directamente", 403,
+         http("POST", f"/vehiculos/{unidad}/movimientos", admin, {"codigo": 1})[0])
+    caso("P25", "Admin elimina la demo del carrito", 200,
+         http("POST", f"/vehiculos/{unidad}/demos/{id_demo_admin}/eliminar", admin)[0])
+    caso("P25", "El nuevo dueño crea su propia demo privada", 201,
+         http("POST", f"/vehiculos/{unidad}/demos", cliente2, {"nombre": f"Demo nueva {SUFIJO}"})[0])
+
     # ----- Logout -----
     caso("P01", "Logout del comprador", 200, http("POST", "/auth/logout", cliente)[0])
     caso("P01", "Tras logout el token ya no sirve", 401, http("GET", "/auth/yo", cliente)[0])

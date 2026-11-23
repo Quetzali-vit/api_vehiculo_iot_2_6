@@ -180,20 +180,49 @@ class AuthService:
     # DEMO: de fábrica (sin dueño) o privadas de un comprador
     # -----------------------------------------------------------------
     def demos_visibles(self, identidad: Identidad, id_vehiculo: int) -> list[dict]:
-        """Las de fábrica y las propias. Nunca las privadas de otra persona."""
-        dueno = None if (identidad.invitado or identidad.es_admin) else identidad.id_usuario
+        """Las de fábrica y las propias. El Administrador ve además las privadas del
+        dueño actual del carrito, para gestionarlas. Nunca las de otro comprador."""
+        if identidad.invitado:
+            dueno = None
+        elif identidad.es_admin:
+            dueno = self._dueno_de(id_vehiculo)
+        else:
+            dueno = identidad.id_usuario
         with self._db.transaccion() as sesion:
             return self._demos_admin.visibles(sesion, id_vehiculo, dueno)
 
+    def _dueno_de(self, id_vehiculo: int) -> int | None:
+        with self._db.transaccion() as sesion:
+            unidad = self._unidades.obtener(sesion, id_vehiculo)
+        if unidad is None:
+            raise NoEncontrado(f"No existe la unidad {id_vehiculo}")
+        return unidad["id_propietario"]
+
     def crear_demo(self, identidad: Identidad, id_vehiculo: int, nombre: str,
                    descripcion: str | None) -> int:
-        """El Administrador crea demos de fábrica; un comprador, demos privadas suyas."""
-        dueno = None if identidad.es_admin else identidad.id_usuario
+        """Un comprador crea demos privadas suyas. El Administrador crea de fábrica en
+        una unidad libre, y privadas del dueño cuando la unidad está vendida."""
+        dueno = self._dueno_de(id_vehiculo) if identidad.es_admin else identidad.id_usuario
         with self._db.transaccion() as sesion:
             id_demo = self._demos_admin.crear(sesion, id_vehiculo, nombre.strip(), descripcion, dueno)
             self._auditoria.registrar(sesion, identidad.id_usuario, identidad.etiqueta, "CREAR", "demo",
                                       str(id_demo), "OK", "fabrica" if dueno is None else "privada")
             return id_demo
+
+    def exigir_gestion_demos(self, identidad: Identidad | None, id_vehiculo: int) -> Identidad:
+        """Permiso para crear, editar o borrar DEMO en una unidad.
+
+        - Admin: cualquier carrito (sin soporte: no es mover la unidad).
+        - Comprador: solo sus unidades.
+        - Invitado: nunca.
+        """
+        identidad = self.exigir_identidad(identidad)
+        if identidad.invitado:
+            raise Prohibido("Una prueba de invitado no gestiona DEMO")
+        if identidad.es_admin:
+            self._dueno_de(id_vehiculo)  # 404 si la unidad no existe
+            return identidad
+        return self.exigir_acceso_vehiculo(identidad, id_vehiculo, True)
 
     def exigir_demo(self, identidad: Identidad, id_vehiculo: int, id_demo: int, editar: bool) -> dict:
         """Comprueba que la demo es de esa unidad y que esa persona puede verla o editarla."""
@@ -208,9 +237,8 @@ class AuthService:
                 raise Prohibido("En una prueba de invitado no se editan demos")
             return demo
         if identidad.es_admin:
-            if dueno is not None:
-                # Las demos privadas son del comprador: el Admin no las ve ni las toca
-                raise NoEncontrado(f"La DEMO {id_demo} no pertenece al vehículo {id_vehiculo}")
+            # Gestiona las demos de cualquier carrito. Mover la unidad vendida sigue
+            # exigiendo soporte: eso lo decide exigir_acceso_vehiculo, no esta función.
             return demo
         # Comprador
         if dueno is None:

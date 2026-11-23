@@ -37,6 +37,8 @@ PROCEDIMIENTOS_ADMIN = frozenset({
     "sp_reserva_activa_vehiculo",
     # 005: autorización de soporte operativo
     "sp_soporte_vigente", "sp_autorizar_soporte", "sp_revocar_soporte",
+    # 006: gestión del administrador
+    "sp_sesiones_activas", "sp_pruebas_activas", "sp_auditoria_usuario",
 })
 
 PROCEDIMIENTOS = PROCEDIMIENTOS_BASE | PROCEDIMIENTOS_ADMIN

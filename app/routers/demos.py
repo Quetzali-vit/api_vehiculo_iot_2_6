@@ -13,7 +13,7 @@ from asyncio import to_thread
 
 from fastapi import APIRouter, Depends, Path, status
 
-from app.core.autorizacion import acceso_vehiculo, operar_vehiculo
+from app.core.autorizacion import acceso_vehiculo, gestionar_demos, operar_vehiculo
 from app.dependencies import Contenedor, get_contenedor
 from app.schemas.comunes import Mensaje, respuestas_error
 from app.schemas.demo import (DemoActualizar, DemoCrear, DemoCreada, DemoEjecucionRespuesta, DemoEnCurso,
@@ -27,9 +27,9 @@ IdDemo = Path(ge=1, description="Identificador de la DEMO")
 IdMovimiento = Path(ge=1, description="Identificador del movimiento de la DEMO")
 
 NOTA_VER = ("\n\n**Autorización (4.3).** Sesión con acceso a la unidad. Se ven las demos de fábrica "
-            "y las propias; nunca las privadas de otra persona.")
-NOTA_EDITAR = ("\n\n**Autorización (4.3).** Hay que poder operar la unidad y ser dueño de la demo: "
-               "el Administrador edita las de fábrica y cada comprador solo las suyas.")
+            "y las privadas del dueño del carrito (el Administrador ve las del cliente; un comprador, solo las suyas).")
+NOTA_EDITAR = ("\n\n**Autorización (4.3).** El Administrador gestiona las demos de cualquier carrito, también "
+               "de los vendidos, sin necesidad de soporte. Un comprador solo gestiona las suyas.")
 
 
 # ---------- DEMO ----------
@@ -47,7 +47,7 @@ async def listar(id_vehiculo: int = IdVehiculo, identidad: Identidad = Depends(a
                          "**SP:** `sp_crear_demo_propietario`, `sp_registrar_auditoria`" + NOTA_EDITAR,
              responses=respuestas_error(401, 403, 404, 503))
 async def crear(datos: DemoCrear, id_vehiculo: int = IdVehiculo,
-                identidad: Identidad = Depends(operar_vehiculo), c: Contenedor = Depends(get_contenedor)):
+                identidad: Identidad = Depends(gestionar_demos), c: Contenedor = Depends(get_contenedor)):
     id_demo = await to_thread(c.auth.crear_demo, identidad, id_vehiculo, datos.nombre, datos.descripcion)
     return {"mensaje": "DEMO creada", "id_demo": id_demo}
 
@@ -77,7 +77,7 @@ async def cancelar(id_vehiculo: int = IdVehiculo, c: Contenedor = Depends(get_co
                          + NOTA_EDITAR,
              responses=respuestas_error(401, 403, 404, 503))
 async def actualizar(datos: DemoActualizar, id_vehiculo: int = IdVehiculo, id_demo: int = IdDemo,
-                     identidad: Identidad = Depends(operar_vehiculo), c: Contenedor = Depends(get_contenedor)):
+                     identidad: Identidad = Depends(gestionar_demos), c: Contenedor = Depends(get_contenedor)):
     await to_thread(c.auth.exigir_demo, identidad, id_vehiculo, id_demo, True)
     return await to_thread(c.demos.actualizar, id_vehiculo, id_demo, datos)
 
@@ -87,7 +87,7 @@ async def actualizar(datos: DemoActualizar, id_vehiculo: int = IdVehiculo, id_de
                          + NOTA_EDITAR,
              responses=respuestas_error(401, 403, 404, 503))
 async def eliminar(id_vehiculo: int = IdVehiculo, id_demo: int = IdDemo,
-                   identidad: Identidad = Depends(operar_vehiculo), c: Contenedor = Depends(get_contenedor)):
+                   identidad: Identidad = Depends(gestionar_demos), c: Contenedor = Depends(get_contenedor)):
     await to_thread(c.auth.exigir_demo, identidad, id_vehiculo, id_demo, True)
     await to_thread(c.demos.eliminar, id_vehiculo, id_demo)
     await to_thread(c.auth.auditar, identidad, "ELIMINAR", "demo", str(id_demo), None)
@@ -139,7 +139,7 @@ async def listar_movimientos(id_vehiculo: int = IdVehiculo, id_demo: int = IdDem
                          "`sp_obtener_movimientos_demo`" + NOTA_EDITAR,
              responses=respuestas_error(401, 403, 404, 409, 503))
 async def agregar_movimiento(datos: MovimientoDemoCrear, id_vehiculo: int = IdVehiculo, id_demo: int = IdDemo,
-                             identidad: Identidad = Depends(operar_vehiculo),
+                             identidad: Identidad = Depends(gestionar_demos),
                              c: Contenedor = Depends(get_contenedor)):
     await to_thread(c.auth.exigir_demo, identidad, id_vehiculo, id_demo, True)
     return await to_thread(c.demos.agregar_movimiento, id_vehiculo, id_demo, datos)
@@ -154,7 +154,7 @@ async def agregar_movimiento(datos: MovimientoDemoCrear, id_vehiculo: int = IdVe
              responses=respuestas_error(401, 403, 404, 409, 503))
 async def actualizar_movimiento(datos: MovimientoDemoActualizar, id_vehiculo: int = IdVehiculo,
                                 id_demo: int = IdDemo, id_demo_movimiento: int = IdMovimiento,
-                                identidad: Identidad = Depends(operar_vehiculo),
+                                identidad: Identidad = Depends(gestionar_demos),
                                 c: Contenedor = Depends(get_contenedor)):
     await to_thread(c.auth.exigir_demo, identidad, id_vehiculo, id_demo, True)
     return await to_thread(c.demos.actualizar_movimiento, id_vehiculo, id_demo, id_demo_movimiento, datos)
@@ -166,7 +166,7 @@ async def actualizar_movimiento(datos: MovimientoDemoActualizar, id_vehiculo: in
              responses=respuestas_error(401, 403, 404, 503))
 async def eliminar_movimiento(id_vehiculo: int = IdVehiculo, id_demo: int = IdDemo,
                               id_demo_movimiento: int = IdMovimiento,
-                              identidad: Identidad = Depends(operar_vehiculo),
+                              identidad: Identidad = Depends(gestionar_demos),
                               c: Contenedor = Depends(get_contenedor)):
     await to_thread(c.auth.exigir_demo, identidad, id_vehiculo, id_demo, True)
     await to_thread(c.demos.eliminar_movimiento, id_vehiculo, id_demo, id_demo_movimiento)

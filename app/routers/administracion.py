@@ -16,6 +16,7 @@ from app.schemas.admin import (AsignacionSolicitud, AuditoriaItem, CatalogoItem,
                                UnidadRespuesta, UsuarioActualizar, UsuarioCrear, UsuarioCreado,
                                UsuarioRespuesta)
 from app.schemas.comunes import respuestas_error
+from app.schemas.admin import (ModeloComandoActivo, ModeloComandoCrear, ModeloDemoCrear, UnidadEditar)
 from app.services.auth_service import Identidad
 
 router = APIRouter(prefix="/admin", tags=["Administración"])
@@ -248,3 +249,60 @@ async def autorizar_soporte(datos: SoporteSolicitud, id_vehiculo: int = IdMiUnid
 async def revocar_soporte(id_vehiculo: int = IdMiUnidad, identidad: Identidad = Depends(identidad_actual),
                           c: Contenedor = Depends(get_contenedor)):
     return await to_thread(c.auth.revocar_soporte, identidad, id_vehiculo)
+
+
+# =====================================================================
+# Gestión del administrador (006): carritos, sesiones, cuenta de cliente y modelos
+# =====================================================================
+@router.post("/unidades/{id_vehiculo}/editar", response_model=UnidadRespuesta, summary="Editar un carrito",
+             description="Cambia nombre, descripción, microcontrolador, modelo, número de serie, estado comercial o activo. «Eliminar» es `activo: false` (baja lógica: se conserva el historial).\n\n**SP:** `sp_actualizar_vehiculo`, `sp_actualizar_comercial`, `sp_registrar_auditoria`",
+             dependencies=[Depends(solo_admin)], responses=respuestas_error(401, 403, 404, 409, 503))
+async def editar_unidad(datos: UnidadEditar, id_vehiculo: int = IdUnidad,
+                        actor: Identidad = Depends(solo_admin), c: Contenedor = Depends(get_contenedor)):
+    return await to_thread(c.gestion.editar_unidad, actor, id_vehiculo, datos)
+
+
+@router.get("/sesiones", summary="Sesiones activas y pruebas de invitado",
+            description="Quién tiene sesión abierta y qué pruebas de exhibición están corriendo ahora.\n\n**SP:** `sp_sesiones_activas`, `sp_pruebas_activas`",
+            dependencies=[Depends(solo_admin)], responses=respuestas_error(401, 403, 503))
+async def sesiones(c: Contenedor = Depends(get_contenedor)):
+    return await to_thread(c.gestion.sesiones_activas)
+
+
+@router.get("/clientes/{id_usuario}/cuenta", summary="Cuenta de un cliente (vista del administrador)",
+            description="Sus carritos, sus sesiones activas y su bitácora.\n\n**SP:** `sp_obtener_usuario`, `sp_obtener_unidades`, `sp_sesiones_activas`, `sp_auditoria_usuario`",
+            dependencies=[Depends(solo_admin)], responses=respuestas_error(401, 403, 404, 503))
+async def cuenta_cliente(id_usuario: int = IdUsuario, c: Contenedor = Depends(get_contenedor)):
+    return await to_thread(c.gestion.cuenta_cliente, id_usuario)
+
+
+@router.get("/modelos/{id_modelo}/comandos", summary="Movimientos habilitados de un modelo",
+            description="Resumen de los comandos de todas las unidades del modelo y en cuántas está habilitado.",
+            dependencies=[Depends(solo_admin)], responses=respuestas_error(401, 403, 404, 503))
+async def comandos_modelo(id_modelo: int = IdModelo, c: Contenedor = Depends(get_contenedor)):
+    return await to_thread(c.gestion.comandos_de_modelo, id_modelo)
+
+
+@router.post("/modelos/{id_modelo}/comandos", summary="Agregar un movimiento a un modelo",
+             description="Lo agrega a todas las unidades del modelo.\n\n**SP:** `sp_crear_comando`",
+             dependencies=[Depends(solo_admin)], responses=respuestas_error(401, 403, 404, 409, 503))
+async def agregar_comando_modelo(datos: ModeloComandoCrear, id_modelo: int = IdModelo,
+                                 actor: Identidad = Depends(solo_admin), c: Contenedor = Depends(get_contenedor)):
+    return await to_thread(c.gestion.agregar_comando_modelo, actor, id_modelo, datos.nombre,
+                           datos.codigo, datos.descripcion)
+
+
+@router.post("/modelos/{id_modelo}/comandos/activo", summary="Habilitar o deshabilitar un movimiento de un modelo",
+             description="Aplica a todas las unidades del modelo.\n\n**SP:** `sp_actualizar_comando`",
+             dependencies=[Depends(solo_admin)], responses=respuestas_error(401, 403, 404, 503))
+async def habilitar_comando_modelo(datos: ModeloComandoActivo, id_modelo: int = IdModelo,
+                                   actor: Identidad = Depends(solo_admin), c: Contenedor = Depends(get_contenedor)):
+    return await to_thread(c.gestion.habilitar_comando_modelo, actor, id_modelo, datos.nombre, datos.activo)
+
+
+@router.post("/modelos/{id_modelo}/demos", summary="Crear una demo de fábrica para un modelo",
+             description="Crea la demo en todas las unidades del modelo con los mismos pasos. Un paso cuyo movimiento no exista en una unidad se omite y se informa.\n\n**SP:** `sp_crear_demo`, `sp_agregar_movimiento_demo`",
+             dependencies=[Depends(solo_admin)], responses=respuestas_error(401, 403, 404, 503))
+async def demo_modelo(datos: ModeloDemoCrear, id_modelo: int = IdModelo,
+                      actor: Identidad = Depends(solo_admin), c: Contenedor = Depends(get_contenedor)):
+    return await to_thread(c.gestion.crear_demo_modelo, actor, id_modelo, datos.nombre, datos.descripcion, datos.pasos)
