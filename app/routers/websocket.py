@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import secrets
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
@@ -36,20 +37,26 @@ async def monitorear(websocket: WebSocket, id_vehiculo: int):
     """
     c = get_contenedor()
     token = websocket.query_params.get("token")
+    clave_dispositivo = websocket.query_params.get("clave")
 
-    identidad = await asyncio.to_thread(c.auth.identificar, token)
-    if identidad is None:
-        await websocket.close(code=CIERRE_SIN_SESION, reason="Sesion no valida")
-        return
+    # El microcontrolador (ESP32) no inicia sesión como persona: se identifica con
+    # la clave de dispositivo que vive en su firmware y en el .env del servidor.
+    es_dispositivo = bool(clave_dispositivo) and secrets.compare_digest(
+        clave_dispositivo, c.settings.api_key)
 
-    try:
-        await asyncio.to_thread(c.auth.exigir_acceso_vehiculo, identidad, id_vehiculo)
-    except NoEncontrado:
-        await websocket.close(code=CIERRE_NO_EXISTE, reason="El vehiculo no existe")
-        return
-    except ApiError:
-        await websocket.close(code=CIERRE_SIN_PERMISO, reason="Sin permiso sobre esa unidad")
-        return
+    if not es_dispositivo:
+        identidad = await asyncio.to_thread(c.auth.identificar, token)
+        if identidad is None:
+            await websocket.close(code=CIERRE_SIN_SESION, reason="Sesion no valida")
+            return
+        try:
+            await asyncio.to_thread(c.auth.exigir_acceso_vehiculo, identidad, id_vehiculo)
+        except NoEncontrado:
+            await websocket.close(code=CIERRE_NO_EXISTE, reason="El vehiculo no existe")
+            return
+        except ApiError:
+            await websocket.close(code=CIERRE_SIN_PERMISO, reason="Sin permiso sobre esa unidad")
+            return
 
     await websocket.accept()
 
@@ -68,7 +75,7 @@ async def monitorear(websocket: WebSocket, id_vehiculo: int):
 
             # La sesión puede vencer o revocarse mientras el socket sigue abierto:
             # se vuelve a comprobar en cada mensaje, no solo al conectar.
-            if not await _sigue_autorizado(c, token, id_vehiculo):
+            if not es_dispositivo and not await _sigue_autorizado(c, token, id_vehiculo):
                 await c.gestor_ws.enviar(websocket, crear_evento(
                     TipoEvento.ERROR, id_vehiculo, mensaje="La sesión terminó"))
                 await websocket.close(code=CIERRE_SIN_SESION, reason="Sesion terminada")

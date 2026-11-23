@@ -34,6 +34,7 @@ PROCEDIMIENTOS_ADMIN = frozenset({
     "sp_expirar_sesiones_invitado",
     "sp_registrar_auditoria", "sp_obtener_auditoria", "sp_metricas_dashboard",
     "sp_crear_demo_propietario", "sp_obtener_demos_visibles", "sp_obtener_demo",
+    "sp_reserva_activa_vehiculo",
 })
 
 PROCEDIMIENTOS = PROCEDIMIENTOS_BASE | PROCEDIMIENTOS_ADMIN
@@ -63,7 +64,16 @@ class SesionSP:
             raise _traducir_integridad(error) from error
         except pymysql.err.DataError as error:
             raise SolicitudInvalida("Algún valor está fuera del rango permitido por la base de datos") from error
-        except (pymysql.err.OperationalError, pymysql.err.InterfaceError) as error:
+        except pymysql.err.OperationalError as error:
+            # 1644 = SIGNAL SQLSTATE '45000' lanzado a propósito por un procedimiento
+            # (por ejemplo, «no hay unidades de exhibición»). Es una regla de negocio,
+            # no una caída de RDS, así que se devuelve 409 con el mensaje del procedimiento.
+            if error.args and error.args[0] == 1644:
+                mensaje = error.args[1] if len(error.args) > 1 else "Operación rechazada por la base de datos"
+                raise Conflicto(str(mensaje)) from error
+            logger.error("Fallo de RDS al ejecutar %s (código %s)", procedimiento, error.args[0] if error.args else "?")
+            raise BaseDatosNoDisponible("Se perdió la conexión con Amazon RDS") from error
+        except pymysql.err.InterfaceError as error:
             logger.error("Fallo de RDS al ejecutar %s (código %s)", procedimiento, error.args[0] if error.args else "?")
             raise BaseDatosNoDisponible("Se perdió la conexión con Amazon RDS") from error
 

@@ -115,6 +115,11 @@ class InvitadoRepository:
         filas = sesion.llamar("sp_finalizar_sesion_invitado", token_hash, motivo)
         return int(filas[0]["finalizadas"]) if filas else 0
 
+    def reserva_activa(self, sesion: SesionSP, id_vehiculo: int) -> bool:
+        """¿Hay una prueba de invitado vigente sobre esa unidad?"""
+        filas = sesion.llamar("sp_reserva_activa_vehiculo", id_vehiculo)
+        return bool(filas and int(filas[0]["reservas"]) > 0)
+
     def expirar_vencidas(self, sesion: SesionSP) -> list[int]:
         """Cierra las vencidas y devuelve los vehículos que quedaron libres."""
         filas = sesion.llamar("sp_expirar_sesiones_invitado")

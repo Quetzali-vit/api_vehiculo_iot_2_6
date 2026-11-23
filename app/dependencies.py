@@ -80,7 +80,8 @@ class Contenedor:
 
     @cached_property
     def auth(self) -> AuthService:
-        return AuthService(self.db, self._usuarios, self._unidades, self._invitados_repo, self._auditoria)
+        return AuthService(self.db, self._usuarios, self._unidades, self._invitados_repo, self._auditoria,
+                           self._demos_admin)
 
     @cached_property
     def admin(self) -> AdminService:

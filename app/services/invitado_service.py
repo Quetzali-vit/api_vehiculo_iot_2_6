@@ -57,8 +57,11 @@ class InvitadoService:
                 datos = self._invitados.crear(sesion, id_modelo, hash_token(token),
                                               (nombre or "Invitado")[:80], MINUTOS_PRUEBA)
             except Conflicto as error:
-                # El índice UNIQUE saltó: otra persona ganó la reserva por milisegundos
-                raise Conflicto("Esa unidad acaba de ser reservada por otra persona") from error
+                if "duplicado" in error.mensaje:
+                    # El índice UNIQUE saltó: otra persona ganó la reserva por milisegundos
+                    raise Conflicto("Esa unidad acaba de ser reservada por otra persona. "
+                                    "Inténtalo de nuevo en unos segundos.") from error
+                raise  # p. ej. «no hay unidades de exhibición disponibles»
             if datos is None:
                 raise Conflicto("No hay unidades de exhibición disponibles en este momento")
             self._auditoria.registrar(sesion, None, f"invitado:{nombre or 'Invitado'}", "INICIAR",

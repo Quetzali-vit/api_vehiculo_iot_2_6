@@ -343,21 +343,30 @@ END$$
 
 -- Cierra todas las vencidas y devuelve qué vehículos quedaron libres,
 -- para que la API les mande DETENER.
+-- Se fija un instante de corte y se usa en la consulta y en el UPDATE: así las
+-- unidades que se devuelven son exactamente las que se cerraron (sin tabla
+-- temporal, que en RDS con GTID puede no estar permitida).
 DROP PROCEDURE IF EXISTS sp_expirar_sesiones_invitado$$
 CREATE PROCEDURE sp_expirar_sesiones_invitado()
 BEGIN
-  DROP TEMPORARY TABLE IF EXISTS tmp_expiradas;
-  CREATE TEMPORARY TABLE tmp_expiradas AS
-    SELECT id_sesion_invitado, id_vehiculo
-      FROM sesiones_invitado
-     WHERE activa = 1 AND fecha_expira <= NOW();
+  DECLARE v_corte DATETIME DEFAULT NOW();
+
+  SELECT DISTINCT id_vehiculo
+    FROM sesiones_invitado
+   WHERE activa = 1 AND fecha_expira <= v_corte;
 
   UPDATE sesiones_invitado
      SET activa = NULL, fecha_fin = NOW(), motivo_fin = 'EXPIRADA'
-   WHERE id_sesion_invitado IN (SELECT id_sesion_invitado FROM tmp_expiradas);
+   WHERE activa = 1 AND fecha_expira <= v_corte;
+END$$
 
-  SELECT id_vehiculo FROM tmp_expiradas;
-  DROP TEMPORARY TABLE IF EXISTS tmp_expiradas;
+-- ¿Hay una prueba de invitado vigente sobre esta unidad? (exclusividad)
+DROP PROCEDURE IF EXISTS sp_reserva_activa_vehiculo$$
+CREATE PROCEDURE sp_reserva_activa_vehiculo(IN p_id_vehiculo INT)
+BEGIN
+  SELECT COUNT(*) AS reservas
+    FROM sesiones_invitado
+   WHERE id_vehiculo = p_id_vehiculo AND activa = 1 AND fecha_expira > NOW();
 END$$
 
 -- =====================================================================

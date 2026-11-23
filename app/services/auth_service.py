@@ -13,7 +13,7 @@ Tres reglas que no se negocian:
 from datetime import datetime, timezone
 
 from app.core.contrasenas import generar_token, hash_token, hashear_contrasena, verificar_contrasena
-from app.core.exceptions import NoAutenticado, NoEncontrado, Prohibido, SolicitudInvalida
+from app.core.exceptions import Conflicto, NoAutenticado, NoEncontrado, Prohibido, SolicitudInvalida
 
 ROL_ADMIN = "ADMIN"
 ROL_USUARIO = "USUARIO"
@@ -45,12 +45,13 @@ class Identidad:
 
 
 class AuthService:
-    def __init__(self, db, usuarios, unidades, invitados, auditoria):
+    def __init__(self, db, usuarios, unidades, invitados, auditoria, demos_admin):
         self._db = db
         self._usuarios = usuarios
         self._unidades = unidades
         self._invitados = invitados
         self._auditoria = auditoria
+        self._demos_admin = demos_admin
 
     # -----------------------------------------------------------------
     # Login y logout
@@ -143,6 +144,7 @@ class AuthService:
 
         with self._db.transaccion() as sesion:
             unidad = self._unidades.obtener(sesion, id_vehiculo)
+            reservada = self._invitados.reserva_activa(sesion, id_vehiculo) if operar else False
         if unidad is None:
             raise NoEncontrado(f"No existe la unidad {id_vehiculo}")
 
@@ -154,12 +156,66 @@ class AuthService:
                     "La unidad pertenece a un comprador. El Administrador no puede operarla "
                     "sin una autorización de soporte del dueño."
                 )
+            if operar and reservada:
+                # Exclusividad: mientras un invitado la prueba, nadie más la mueve
+                raise Conflicto("La unidad está reservada por una prueba de invitado en curso")
             return identidad
 
         if propietario != identidad.id_usuario:
             # 404 y no 403: así un comprador no puede averiguar qué IDs existen
             raise NoEncontrado(f"No existe la unidad {id_vehiculo}")
         return identidad
+
+    # -----------------------------------------------------------------
+    # DEMO: de fábrica (sin dueño) o privadas de un comprador
+    # -----------------------------------------------------------------
+    def demos_visibles(self, identidad: Identidad, id_vehiculo: int) -> list[dict]:
+        """Las de fábrica y las propias. Nunca las privadas de otra persona."""
+        dueno = None if (identidad.invitado or identidad.es_admin) else identidad.id_usuario
+        with self._db.transaccion() as sesion:
+            return self._demos_admin.visibles(sesion, id_vehiculo, dueno)
+
+    def crear_demo(self, identidad: Identidad, id_vehiculo: int, nombre: str,
+                   descripcion: str | None) -> int:
+        """El Administrador crea demos de fábrica; un comprador, demos privadas suyas."""
+        dueno = None if identidad.es_admin else identidad.id_usuario
+        with self._db.transaccion() as sesion:
+            id_demo = self._demos_admin.crear(sesion, id_vehiculo, nombre.strip(), descripcion, dueno)
+            self._auditoria.registrar(sesion, identidad.id_usuario, identidad.etiqueta, "CREAR", "demo",
+                                      str(id_demo), "OK", "fabrica" if dueno is None else "privada")
+            return id_demo
+
+    def exigir_demo(self, identidad: Identidad, id_vehiculo: int, id_demo: int, editar: bool) -> dict:
+        """Comprueba que la demo es de esa unidad y que esa persona puede verla o editarla."""
+        with self._db.transaccion() as sesion:
+            demo = self._demos_admin.obtener(sesion, id_demo)
+        if demo is None or demo["id_vehiculo"] != id_vehiculo:
+            raise NoEncontrado(f"La DEMO {id_demo} no pertenece al vehículo {id_vehiculo}")
+
+        dueno = demo["id_propietario"]
+        if identidad.invitado:
+            if editar or dueno is not None:
+                raise Prohibido("En una prueba de invitado no se editan demos")
+            return demo
+        if identidad.es_admin:
+            if dueno is not None:
+                # Las demos privadas son del comprador: el Admin no las ve ni las toca
+                raise NoEncontrado(f"La DEMO {id_demo} no pertenece al vehículo {id_vehiculo}")
+            return demo
+        # Comprador
+        if dueno is None:
+            if editar:
+                raise Prohibido("Es una demo de fábrica: puedes ejecutarla, pero no modificarla")
+            return demo
+        if dueno != identidad.id_usuario:
+            raise NoEncontrado(f"La DEMO {id_demo} no pertenece al vehículo {id_vehiculo}")
+        return demo
+
+    def auditar(self, identidad: Identidad, accion: str, recurso: str, id_recurso: str | None,
+                detalle: str | None) -> None:
+        with self._db.transaccion() as sesion:
+            self._auditoria.registrar(sesion, identidad.id_usuario, identidad.etiqueta, accion,
+                                      recurso, id_recurso, "OK", detalle)
 
     # -----------------------------------------------------------------
     # Alta de usuarios (la hace el Administrador)

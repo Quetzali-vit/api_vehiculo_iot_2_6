@@ -24,7 +24,7 @@ CREATE TABLE IF NOT EXISTS `roles` (
   `descripcion` VARCHAR(255) DEFAULT NULL,
   PRIMARY KEY (`id_rol`),
   UNIQUE KEY `uq_rol_clave` (`clave`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 -- ---------------------------------------------------------------------
 -- 2. Usuarios (empresa y compradores)
@@ -44,7 +44,7 @@ CREATE TABLE IF NOT EXISTS `usuarios` (
   KEY `fk_usuario_rol` (`id_rol`),
   CONSTRAINT `fk_usuario_rol` FOREIGN KEY (`id_rol`) REFERENCES `roles` (`id_rol`)
     ON DELETE RESTRICT ON UPDATE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 -- ---------------------------------------------------------------------
 -- 3. Sesiones de usuario (login / logout real)
@@ -63,7 +63,7 @@ CREATE TABLE IF NOT EXISTS `sesiones` (
   KEY `ix_sesion_expira` (`fecha_expira`),
   CONSTRAINT `fk_sesion_usuario` FOREIGN KEY (`id_usuario`) REFERENCES `usuarios` (`id_usuario`)
     ON DELETE CASCADE ON UPDATE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 -- ---------------------------------------------------------------------
 -- 4. Modelos comerciales
@@ -80,7 +80,7 @@ CREATE TABLE IF NOT EXISTS `modelos` (
   `fecha_registro`   TIMESTAMP    NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id_modelo`),
   UNIQUE KEY `uq_modelo_nombre` (`nombre`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 -- ---------------------------------------------------------------------
 -- 5. vehiculos: columnas comerciales
@@ -178,7 +178,7 @@ CREATE TABLE IF NOT EXISTS `sesiones_invitado` (
   KEY `ix_invitado_expira` (`fecha_expira`),
   CONSTRAINT `fk_invitado_vehiculo` FOREIGN KEY (`id_vehiculo`) REFERENCES `vehiculos` (`id_vehiculo`)
     ON DELETE CASCADE ON UPDATE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 -- ---------------------------------------------------------------------
 -- 8. Auditoría de acciones sensibles
@@ -199,6 +199,6 @@ CREATE TABLE IF NOT EXISTS `auditoria` (
   KEY `fk_auditoria_usuario` (`id_usuario`),
   CONSTRAINT `fk_auditoria_usuario` FOREIGN KEY (`id_usuario`) REFERENCES `usuarios` (`id_usuario`)
     ON DELETE SET NULL ON UPDATE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 SELECT 'Migración 001 aplicada' AS resultado;

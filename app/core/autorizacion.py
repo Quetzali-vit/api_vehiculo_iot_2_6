@@ -9,7 +9,7 @@ from asyncio import to_thread
 from fastapi import Depends, Security
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
-from app.core.exceptions import NoAutenticado
+from app.core.exceptions import NoAutenticado, Prohibido
 from app.dependencies import Contenedor, get_contenedor
 from app.services.auth_service import Identidad
 
@@ -66,8 +66,15 @@ async def operar_vehiculo(
     identidad: Identidad = Depends(identidad_actual),
     c: Contenedor = Depends(get_contenedor),
 ) -> Identidad:
-    """Como la anterior, pero para acciones que MUEVEN la unidad: el
-    Administrador no puede operar una unidad que ya tiene dueño."""
+    """Para acciones sobre DEMO (crearlas, editarlas, ejecutarlas o cancelarlas).
+
+    El Administrador no puede operar una unidad que ya tiene dueño, y un
+    invitado no toca demos: una demo podría incluir comandos fuera de la lista
+    reducida de su prueba. Sus movimientos van por POST /movimientos, que sí
+    filtra comando por comando.
+    """
+    if identidad.invitado:
+        raise Prohibido("Una prueba de invitado no puede crear, editar ni ejecutar DEMO")
     return await to_thread(c.auth.exigir_acceso_vehiculo, identidad, id_vehiculo, True)
 
 

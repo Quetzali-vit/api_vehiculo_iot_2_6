@@ -19,6 +19,10 @@ class DemoRespuesta(BaseModel):
     nombre: str
     descripcion: str | None
     activo: bool
+    # Práctica 4.3: dueño de la demo (null = de fábrica, de la empresa)
+    id_propietario: int | None = None
+    tipo: str | None = Field(default=None, description="FABRICA o PRIVADA")
+    total_movimientos: int | None = None
 
 
 class DemoCreada(BaseModel):
