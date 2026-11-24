@@ -330,6 +330,13 @@ def main() -> int:
     caso("P17", "La auditoría no guarda contraseñas ni tokens", True,
          estado == 200 and not any("Admin123" in json.dumps(b) or cliente in json.dumps(b) for b in bitacora))
 
+    # ----- Limpieza: el carrito de prueba no se queda en la cuenta de nadie -----
+    caso("FIN", "Se libera el carrito de prueba", 200,
+         http("POST", f"/admin/unidades/{unidad}/asignar", admin, {"id_usuario": None})[0])
+    caso("FIN", "Se da de baja el carrito de prueba", 200,
+         http("POST", f"/admin/unidades/{unidad}/editar", admin,
+              {"activo": False, "estado_comercial": "INACTIVO"})[0])
+
     total = len(resultados)
     buenos = sum(1 for _, ok, _ in resultados if ok)
     print(f"\n== {buenos}/{total} casos correctos ==")
