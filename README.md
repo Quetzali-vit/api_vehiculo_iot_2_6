@@ -101,7 +101,7 @@ python pruebas/prueba_roles.py                          # contra la API publicad
 python pruebas/prueba_roles.py http://127.0.0.1:8000    # contra una API local
 ```
 
-53 casos P00–P17 (login, alta de unidad y cliente, asignación, aislamiento entre compradores, control, WSS, historial de 10, demo persistente, ejecución y cancelación, invitado, rechazos 403/404, exclusividad, reasignación con revocación inmediata, logout y auditoría). Resultado contra `https://quetzali-iot.duckdns.org` el 23/11/2026: **53/53 correctos**.
+85 casos P00–P25 (login, alta de unidad y cliente, asignación, aislamiento entre compradores, control, WSS, historial de 10, demo persistente, ejecución y cancelación, invitado, rechazos 403/404, exclusividad, reasignación con revocación inmediata, soporte, gestión del administrador, logout y auditoría). Al terminar, el script libera y da de baja el carrito de prueba que creó. Resultado contra `https://quetzali-iot.duckdns.org` el 27/11/2026, ya con la versión orientada a objetos: **85/85 correctos**.
 
 ## Arquitectura orientada a objetos
 
