@@ -3,14 +3,15 @@ invitados y auditoría. Mismo estilo que los repositorios de 4.1/4.2: una clase
 por área, sin lógica de negocio y sin SQL concatenado."""
 
 from app.db.database import SesionSP
+from app.repositories.base import Repositorio
 
 
-class UsuarioRepository:
+class UsuarioRepository(Repositorio):
     """Usuarios, roles y sesiones de login."""
 
     def por_correo(self, sesion: SesionSP, correo: str) -> dict | None:
         filas = sesion.llamar("sp_login_usuario", correo)
-        return filas[0] if filas else None
+        return self._primera(filas)
 
     def crear(self, sesion: SesionSP, nombre: str, correo: str, hash_contrasena: str,
               rol: str, telefono: str | None) -> int:
@@ -22,13 +23,13 @@ class UsuarioRepository:
 
     def obtener(self, sesion: SesionSP, id_usuario: int) -> dict | None:
         filas = sesion.llamar("sp_obtener_usuario", id_usuario)
-        return filas[0] if filas else None
+        return self._primera(filas)
 
     def actualizar(self, sesion: SesionSP, id_usuario: int, nombre: str | None, telefono: str | None,
                    hash_contrasena: str | None, rol: str | None, activo: bool | None) -> dict | None:
         filas = sesion.llamar("sp_actualizar_usuario", id_usuario, nombre, telefono,
                               hash_contrasena, rol, None if activo is None else int(activo))
-        return filas[0] if filas else None
+        return self._primera(filas)
 
     # ----- sesiones de login -----
 
@@ -38,14 +39,14 @@ class UsuarioRepository:
 
     def obtener_sesion(self, sesion: SesionSP, token_hash: str) -> dict | None:
         filas = sesion.llamar("sp_obtener_sesion", token_hash)
-        return filas[0] if filas else None
+        return self._primera(filas)
 
     def revocar_sesion(self, sesion: SesionSP, token_hash: str) -> int:
         filas = sesion.llamar("sp_revocar_sesion", token_hash)
         return int(filas[0]["revocadas"]) if filas else 0
 
 
-class ModeloRepository:
+class ModeloRepository(Repositorio):
     """Modelos comerciales (lo que la empresa vende)."""
 
     def crear(self, sesion: SesionSP, nombre: str, descripcion: str | None,
@@ -58,20 +59,20 @@ class ModeloRepository:
 
     def obtener(self, sesion: SesionSP, id_modelo: int) -> dict | None:
         filas = sesion.llamar("sp_obtener_modelo", id_modelo)
-        return filas[0] if filas else None
+        return self._primera(filas)
 
     def actualizar(self, sesion: SesionSP, id_modelo: int, nombre: str | None, descripcion: str | None,
                    microcontrolador: str | None, precio, imagen_url: str | None,
                    activo: bool | None) -> dict | None:
         filas = sesion.llamar("sp_actualizar_modelo", id_modelo, nombre, descripcion, microcontrolador,
                               precio, imagen_url, None if activo is None else int(activo))
-        return filas[0] if filas else None
+        return self._primera(filas)
 
     def catalogo_publico(self, sesion: SesionSP) -> list[dict]:
         return sesion.llamar("sp_catalogo_publico")
 
 
-class UnidadRepository:
+class UnidadRepository(Repositorio):
     """Vista comercial de la tabla vehiculos (unidades físicas)."""
 
     def listar(self, sesion: SesionSP) -> list[dict]:
@@ -79,17 +80,17 @@ class UnidadRepository:
 
     def obtener(self, sesion: SesionSP, id_vehiculo: int) -> dict | None:
         filas = sesion.llamar("sp_obtener_unidad", id_vehiculo)
-        return filas[0] if filas else None
+        return self._primera(filas)
 
     def actualizar_comercial(self, sesion: SesionSP, id_vehiculo: int, id_modelo: int | None,
                              numero_serie: str | None, estado_comercial: str | None) -> dict | None:
         filas = sesion.llamar("sp_actualizar_comercial", id_vehiculo, id_modelo,
                               numero_serie, estado_comercial)
-        return filas[0] if filas else None
+        return self._primera(filas)
 
     def asignar(self, sesion: SesionSP, id_vehiculo: int, id_usuario: int | None) -> dict | None:
         filas = sesion.llamar("sp_asignar_unidad", id_vehiculo, id_usuario)
-        return filas[0] if filas else None
+        return self._primera(filas)
 
     def mis_vehiculos(self, sesion: SesionSP, id_usuario: int) -> list[dict]:
         return sesion.llamar("sp_obtener_mis_vehiculos", id_usuario)
@@ -99,17 +100,17 @@ class UnidadRepository:
         return filas[0] if filas else {}
 
 
-class InvitadoRepository:
+class InvitadoRepository(Repositorio):
     """Sesiones temporales de prueba comercial."""
 
     def crear(self, sesion: SesionSP, id_modelo: int | None, token_hash: str,
               nombre: str | None, minutos: int) -> dict | None:
         filas = sesion.llamar("sp_crear_sesion_invitado", id_modelo, token_hash, nombre, minutos)
-        return filas[0] if filas else None
+        return self._primera(filas)
 
     def obtener(self, sesion: SesionSP, token_hash: str) -> dict | None:
         filas = sesion.llamar("sp_obtener_sesion_invitado", token_hash)
-        return filas[0] if filas else None
+        return self._primera(filas)
 
     def finalizar(self, sesion: SesionSP, token_hash: str, motivo: str) -> int:
         filas = sesion.llamar("sp_finalizar_sesion_invitado", token_hash, motivo)
@@ -126,7 +127,7 @@ class InvitadoRepository:
         return [int(f["id_vehiculo"]) for f in filas]
 
 
-class AuditoriaRepository:
+class AuditoriaRepository(Repositorio):
     """Bitácora de acciones sensibles. Nunca guarda contraseñas ni tokens."""
 
     def registrar(self, sesion: SesionSP, id_usuario: int | None, actor: str, accion: str,
@@ -138,7 +139,7 @@ class AuditoriaRepository:
         return sesion.llamar("sp_obtener_auditoria", limite)
 
 
-class DemoAdminRepository:
+class DemoAdminRepository(Repositorio):
     """Demos con dueño: de fábrica (sin dueño) o privadas de un comprador."""
 
     def crear(self, sesion: SesionSP, id_vehiculo: int, nombre: str,
@@ -151,26 +152,26 @@ class DemoAdminRepository:
 
     def obtener(self, sesion: SesionSP, id_demo: int) -> dict | None:
         filas = sesion.llamar("sp_obtener_demo", id_demo)
-        return filas[0] if filas else None
+        return self._primera(filas)
 
 
-class SoporteRepository:
+class SoporteRepository(Repositorio):
     """Autorizaciones de soporte operativo que el comprador da al Administrador (005)."""
 
     def vigente(self, sesion: SesionSP, id_vehiculo: int) -> dict | None:
         filas = sesion.llamar("sp_soporte_vigente", id_vehiculo)
-        return filas[0] if filas else None
+        return self._primera(filas)
 
     def autorizar(self, sesion: SesionSP, id_vehiculo: int, id_usuario: int, minutos: int) -> dict | None:
         filas = sesion.llamar("sp_autorizar_soporte", id_vehiculo, id_usuario, minutos)
-        return filas[0] if filas else None
+        return self._primera(filas)
 
     def revocar(self, sesion: SesionSP, id_vehiculo: int, id_usuario: int) -> int:
         filas = sesion.llamar("sp_revocar_soporte", id_vehiculo, id_usuario)
         return int(filas[0]["revocadas"]) if filas else 0
 
 
-class SesionesRepository:
+class SesionesRepository(Repositorio):
     """Vistas de sesiones y bitácora para la cuenta de cliente del administrador (006)."""
 
     def sesiones_activas(self, sesion: SesionSP) -> list[dict]:

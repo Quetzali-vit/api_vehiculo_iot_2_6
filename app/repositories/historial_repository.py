@@ -1,7 +1,8 @@
 from app.db.database import SesionSP
+from app.repositories.base import Repositorio
 
 
-class HistorialRepository:
+class HistorialRepository(Repositorio):
     """Acceso a los SP de la tabla historial_comandos."""
 
     def registrar(self, sesion: SesionSP, id_vehiculo: int, id_comando: int, origen: str) -> None:

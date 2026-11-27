@@ -1,3 +1,5 @@
+from typing import ClassVar
+
 from pydantic import BaseModel
 
 
@@ -8,10 +10,7 @@ class Mensaje(BaseModel):
 class ErrorRespuesta(BaseModel):
     detail: str
 
-
-def respuestas_error(*codigos: int) -> dict:
-    """Arma el bloque `responses` de Swagger para los códigos de error indicados."""
-    descripciones = {
+    DESCRIPCIONES: ClassVar[dict[int, str]] = {
         400: "Solicitud inválida o referencia a un registro inexistente",
         401: "Falta el encabezado X-API-Key",
         403: "La clave X-API-Key no es válida",
@@ -19,4 +18,12 @@ def respuestas_error(*codigos: int) -> dict:
         409: "Conflicto con el estado actual (inactivo, duplicado, DEMO en curso…)",
         503: "Amazon RDS no está disponible",
     }
-    return {c: {"model": ErrorRespuesta, "description": descripciones[c]} for c in codigos}
+
+    @classmethod
+    def documentar(cls, *codigos: int) -> dict:
+        """Arma el bloque `responses` de Swagger para los códigos de error indicados."""
+        return {c: {"model": cls, "description": cls.DESCRIPCIONES[c]} for c in codigos}
+
+
+# Nombre corto que usan los controladores en sus decoradores
+respuestas_error = ErrorRespuesta.documentar

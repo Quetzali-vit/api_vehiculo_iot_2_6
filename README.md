@@ -1,6 +1,7 @@
 # API Vehículo IoT 
 
-API en **Python + FastAPI**, organizada con programación orientada a objetos, que usa los
+API en **Python + FastAPI**, escrita **100 % con programación orientada a objetos** (ver
+[Arquitectura orientada a objetos](#arquitectura-orientada-a-objetos)), que usa los
 **21 Stored Procedures** del esquema `vehiculo_iot` alojado en **Amazon RDS**.
 Incluye servicios GET y POST, monitoreo por **WebSocket** y ejecución de DEMO.
 
@@ -102,29 +103,122 @@ python pruebas/prueba_roles.py http://127.0.0.1:8000    # contra una API local
 
 53 casos P00–P17 (login, alta de unidad y cliente, asignación, aislamiento entre compradores, control, WSS, historial de 10, demo persistente, ejecución y cancelación, invitado, rechazos 403/404, exclusividad, reasignación con revocación inmediata, logout y auditoría). Resultado contra `https://quetzali-iot.duckdns.org` el 23/11/2026: **53/53 correctos**.
 
-## Arquitectura
+## Arquitectura orientada a objetos
+
+Toda la API está escrita con **clases**: no hay funciones sueltas en `app/`. Cada capa es un
+conjunto de objetos con una sola responsabilidad, que reciben sus dependencias por el
+constructor (inyección de dependencias) en lugar de crearlas.
+
+Flujo de una petición: **Controlador → Servicio → Repositorio → Stored Procedure → Amazon RDS**.
 
 ```
 app/
-├── main.py                  # Crea la app FastAPI, registra routers y manejo de errores
-├── dependencies.py          # Contenedor: crea y conecta una instancia de cada componente
+├── main.py                  # AplicacionApi: arma FastAPI (CORS, errores, Swagger) y registra los controladores
+├── dependencies.py          # Contenedor: crea UNA instancia de cada servicio y repositorio y las conecta
 ├── core/
-│   ├── config.py            # Settings: variables de entorno (.env)
-│   ├── exceptions.py        # Errores de negocio → códigos HTTP
-│   └── security.py          # Autorización con el encabezado X-API-Key
-├── db/database.py           # Database y SesionSP: conexión a RDS, transacciones y CALL con parámetros enlazados
-├── repositories/            # Una clase por tabla; cada método llama a un Stored Procedure
-├── services/                # Reglas de negocio (validaciones, transacciones, DEMO)
-│   ├── reglas.py            # Existencia, pertenencia y estado activo
-│   ├── movimiento_service.py# Movimiento individual: estado + historial en una transacción
-│   ├── demo_service.py      # CRUD de DEMO y preparación de la ejecución
-│   └── demo_executor.py     # Ejecución asíncrona de la DEMO, cancelación y concurrencia
-├── schemas/                 # Modelos Pydantic de entrada y salida
-├── routers/                 # Endpoints HTTP y WebSocket (sin lógica de persistencia)
-└── websocket/               # GestorWebSocket (clientes por vehículo) y formato de eventos
+│   ├── config.py            # Settings: variables de entorno (.env), una sola instancia
+│   ├── exceptions.py        # ApiError y sus subclases → códigos HTTP
+│   ├── autorizacion.py      # Permisos como objetos: IdentidadActual, SoloAdmin, PermisoUnidad y subclases
+│   ├── contrasenas.py       # HasherContrasenas (PBKDF2) y GeneradorTokens (SHA-256)
+│   └── security.py          # VerificadorApiKey: encabezado X-API-Key del ESP32
+├── db/database.py           # Database (conexión y transacciones) y SesionSP (CALL con parámetros enlazados)
+├── repositories/            # Repositorio (base) + una subclase por tabla; cada método llama a un SP
+├── services/                # Reglas de negocio: AuthService, AdminService, DemoService, EjecutorDemos…
+├── schemas/                 # Modelos Pydantic (clases) de entrada y salida
+├── routers/                 # Controlador (base) + un controlador por grupo de endpoints
+│   ├── base.py              # Controlador y Ruta: registran los métodos de cada clase como endpoints
+│   ├── vehiculos.py         # VehiculosControlador
+│   ├── demos.py             # DemosControlador
+│   ├── administracion.py    # AdministracionControlador y PublicoControlador
+│   └── …                    # Auth, Comandos, Estado, Movimientos, Historial, Invitados, Sistema, WebSocket
+└── websocket/               # GestorWebSocket (clientes por vehículo) y EventoWebSocket (formato de mensajes)
 ```
 
-Flujo: **Router → Service → Repository → Stored Procedure → Amazon RDS**.
+### Diagrama de clases (resumen)
+
+```mermaid
+classDiagram
+    class AplicacionApi {
+        +app: FastAPI
+        +CONTROLADORES
+        -_configurar_cors()
+        -_registrar_errores()
+    }
+    class Controlador {
+        <<base>>
+        +prefijo: str
+        +etiquetas: list
+        +router: APIRouter
+        +c: Contenedor
+    }
+    class Ruta {
+        +metodo: str
+        +camino: str
+        +get()$
+        +post()$
+        +websocket()$
+    }
+    class Contenedor {
+        +auth: AuthService
+        +admin: AdminService
+        +demos: DemoService
+        +movimientos: MovimientoService
+        +instancia()$
+    }
+    class PermisoUnidad {
+        <<base>>
+        +__call__(id_vehiculo, identidad)
+        +verificar()*
+    }
+    class Repositorio {
+        <<base>>
+        #_primera(filas)$
+    }
+    class ApiError {
+        <<base>>
+        +status_code: int
+        +mensaje: str
+    }
+
+    AplicacionApi o-- Controlador : registra
+    Controlador ..> Ruta : usa como decorador
+    Controlador --> Contenedor : self.c
+    Controlador <|-- VehiculosControlador
+    Controlador <|-- DemosControlador
+    Controlador <|-- AdministracionControlador
+    Controlador <|-- MovimientosControlador
+    Controlador <|-- WebSocketControlador
+    PermisoUnidad <|-- AccesoVehiculo
+    PermisoUnidad <|-- OperarVehiculo
+    PermisoUnidad <|-- GestionarDemos
+    Contenedor *-- AuthService
+    Contenedor *-- DemoService
+    Contenedor *-- MovimientoService
+    AuthService --> Repositorio : usa
+    Repositorio <|-- VehiculoRepository
+    Repositorio <|-- DemoRepository
+    Repositorio <|-- UnidadRepository
+    Repositorio <|-- UsuarioRepository
+    ApiError <|-- NoEncontrado
+    ApiError <|-- Prohibido
+    ApiError <|-- Conflicto
+```
+
+### Los cuatro pilares en el código
+
+| Pilar | Dónde se ve |
+|---|---|
+| **Encapsulamiento** | `SesionSP` solo deja ejecutar procedimientos de una lista fija y siempre con parámetros enlazados; nadie toca la conexión directamente. `HasherContrasenas` oculta la sal, las iteraciones y la comparación en tiempo constante. Los atributos internos llevan `_` (`self._db`, `self._usuarios`). |
+| **Herencia** | Cada controlador hereda de `Controlador` (que arma su `APIRouter`); cada repositorio hereda de `Repositorio`; `AccesoVehiculo`, `OperarVehiculo` y `GestionarDemos` heredan de `PermisoUnidad`; los errores (`NoEncontrado`, `Prohibido`, `Conflicto`…) heredan de `ApiError`; `ComandoCrear` y `ComandoActualizar` heredan la normalización del nombre de `ConNombreDeComando`. |
+| **Polimorfismo** | `PermisoUnidad.__call__` siempre hace lo mismo (lee la unidad de la URL y la sesión) y llama a `verificar()`, que cada subclase implementa con su propia regla. El manejador de errores trata igual a cualquier `ApiError` y usa el `status_code` de la subclase concreta. |
+| **Abstracción** | Un controlador solo conoce servicios (`self.c.demos.agregar_movimiento(...)`), no SQL; un servicio solo conoce repositorios; solo los repositorios conocen los nombres de los Stored Procedures. |
+
+### Patrones de diseño
+
+- **Inyección de dependencias:** `Contenedor` crea los repositorios y se los pasa a cada servicio por su constructor; los servicios no crean nada por su cuenta.
+- **Singleton:** `Contenedor.instancia()` y `Settings.cargar()` devuelven siempre el mismo objeto en todo el proceso.
+- **Repository:** una clase por tabla aísla el acceso a datos.
+- **Fábrica:** `EventoWebSocket.crear()` y `Ruta.get()/post()` construyen objetos con una forma común.
 
 ## Ejecución local
 

@@ -65,7 +65,7 @@ class SesionSP:
                     pass
             return filas
         except pymysql.err.IntegrityError as error:
-            raise _traducir_integridad(error) from error
+            raise self._traducir_integridad(error) from error
         except pymysql.err.DataError as error:
             raise SolicitudInvalida("Algún valor está fuera del rango permitido por la base de datos") from error
         except pymysql.err.OperationalError as error:
@@ -80,6 +80,18 @@ class SesionSP:
         except pymysql.err.InterfaceError as error:
             logger.error("Fallo de RDS al ejecutar %s (código %s)", procedimiento, error.args[0] if error.args else "?")
             raise BaseDatosNoDisponible("Se perdió la conexión con Amazon RDS") from error
+
+    @staticmethod
+    def _traducir_integridad(error: pymysql.err.IntegrityError) -> Exception:
+        """Convierte un error de integridad de MySQL en un error de la API con mensaje claro."""
+        codigo = error.args[0] if error.args else None
+        if codigo == 1062:
+            return Conflicto("Ya existe un registro con esos datos (valor duplicado)")
+        if codigo == 1451:
+            return Conflicto("No se puede eliminar: el registro se usa en otra tabla (por ejemplo, en una DEMO)")
+        if codigo == 1452:
+            return SolicitudInvalida("Se hace referencia a un registro que no existe")
+        return Conflicto("La operación viola una regla de integridad de la base de datos")
 
 
 class Database:
@@ -125,13 +137,3 @@ class Database:
         finally:
             conexion.close()
 
-
-def _traducir_integridad(error: pymysql.err.IntegrityError) -> Exception:
-    codigo = error.args[0] if error.args else None
-    if codigo == 1062:
-        return Conflicto("Ya existe un registro con esos datos (valor duplicado)")
-    if codigo == 1451:
-        return Conflicto("No se puede eliminar: el registro se usa en otra tabla (por ejemplo, en una DEMO)")
-    if codigo == 1452:
-        return SolicitudInvalida("Se hace referencia a un registro que no existe")
-    return Conflicto("La operación viola una regla de integridad de la base de datos")

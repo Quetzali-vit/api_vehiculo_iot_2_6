@@ -109,7 +109,12 @@ class Contenedor:
         return GestionService(self.db, self._usuarios, self._modelos, self._unidades, self._vehiculos,
                               self._comandos, self._demos, self._sesiones, self._auditoria)
 
+    @classmethod
+    @lru_cache
+    def instancia(cls) -> "Contenedor":
+        """Una sola instancia por proceso (Singleton): todos comparten los mismos servicios."""
+        return cls()
 
-@lru_cache
-def get_contenedor() -> Contenedor:
-    return Contenedor()
+
+# Nombre que usan FastAPI (Depends) y los controladores para pedir el contenedor
+get_contenedor = Contenedor.instancia

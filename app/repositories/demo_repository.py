@@ -1,7 +1,8 @@
 from app.db.database import SesionSP
+from app.repositories.base import Repositorio
 
 
-class DemoRepository:
+class DemoRepository(Repositorio):
     """Acceso a los SP de las tablas demos y demo_movimientos."""
 
     # --- demos ---

@@ -35,11 +35,11 @@ class AdminService:
         return usuario
 
     def actualizar_usuario(self, actor, id_usuario: int, datos) -> dict:
-        from app.core.contrasenas import hashear_contrasena
+        from app.core.contrasenas import hasher_contrasenas
 
         if datos.contrasena is not None and len(datos.contrasena) < 8:
             raise SolicitudInvalida("La contraseña debe tener al menos 8 caracteres")
-        hash_nuevo = hashear_contrasena(datos.contrasena) if datos.contrasena else None
+        hash_nuevo = hasher_contrasenas.hashear(datos.contrasena) if datos.contrasena else None
 
         with self._db.transaccion() as sesion:
             actual = self._usuarios.obtener(sesion, id_usuario)

@@ -1,7 +1,8 @@
 from app.db.database import SesionSP
+from app.repositories.base import Repositorio
 
 
-class EstadoRepository:
+class EstadoRepository(Repositorio):
     """Acceso a los SP de la tabla estado_vehiculo."""
 
     def actualizar(self, sesion: SesionSP, id_vehiculo: int, id_comando: int | None, conectado: bool) -> None:
@@ -9,4 +10,4 @@ class EstadoRepository:
 
     def obtener(self, sesion: SesionSP, id_vehiculo: int) -> dict | None:
         filas = sesion.llamar("sp_obtener_estado", id_vehiculo)
-        return filas[0] if filas else None
+        return self._primera(filas)

@@ -1,5 +1,5 @@
 import logging
-from asyncio import to_thread
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
@@ -10,9 +10,18 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from app.core.config import get_settings
 from app.core.exceptions import ApiError
 from app.dependencies import get_contenedor
-from app.routers import (administracion, auth, comandos, demos, estado, historial, invitados,
-                         movimientos, vehiculos, websocket)
-from app.schemas.comunes import Mensaje, respuestas_error
+from app.routers.administracion import AdministracionControlador, PublicoControlador
+from app.routers.auth import AuthControlador
+from app.routers.base import Controlador
+from app.routers.comandos import ComandosControlador
+from app.routers.demos import DemosControlador
+from app.routers.estado import EstadoControlador
+from app.routers.historial import HistorialControlador
+from app.routers.invitados import InvitadosControlador
+from app.routers.movimientos import MovimientosControlador
+from app.routers.sistema import SistemaControlador
+from app.routers.vehiculos import VehiculosControlador
+from app.routers.websocket import WebSocketControlador
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger("api_vehiculo_iot")
@@ -48,39 +57,18 @@ ETIQUETAS = [
 ]
 
 
-@asynccontextmanager
-async def ciclo_de_vida(app: FastAPI):
-    contenedor = get_contenedor()  # valida las variables de entorno al arrancar
-    await contenedor.invitados.iniciar_vigilancia()  # cierra las pruebas vencidas (4.3)
-    logger.info("API lista en el puerto 8000 (Swagger en /docs)")
-    yield
-    await contenedor.invitados.detener_vigilancia()
-    await contenedor.ejecutor.cancelar_todas()
+class AplicacionApi:
+    """Arma la aplicación FastAPI: configuración, CORS, errores, Swagger y controladores."""
 
+    # El orden importa: es el orden en que FastAPI prueba las rutas y el de Swagger
+    CONTROLADORES: tuple[type[Controlador], ...] = (
+        SistemaControlador, AuthControlador, AdministracionControlador, PublicoControlador,
+        InvitadosControlador, VehiculosControlador, ComandosControlador, EstadoControlador,
+        MovimientosControlador, HistorialControlador, DemosControlador, WebSocketControlador,
+    )
 
-app = FastAPI(
-    title="API Vehículo IoT",
-    description=DESCRIPCION,
-    version="1.0.0",
-    openapi_tags=ETIQUETAS,
-    lifespan=ciclo_de_vida,
-    docs_url=None,
-)
-
-# El frontend vive en otro origen (GitHub Pages), así que el navegador exige CORS.
-# CORS no es autenticación: la protección real son la sesión y los permisos por recurso.
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=get_settings().lista_cors,
-    allow_methods=["GET", "POST"],
-    allow_headers=["Content-Type", "X-API-Key", "Authorization"],
-    allow_credentials=False,
-    max_age=600,
-)
-
-
-# Swagger UI siempre en modo claro, aunque el navegador o el sistema estén en modo oscuro.
-MODO_CLARO = """
+    # Swagger UI siempre en modo claro, aunque el navegador o el sistema estén en modo oscuro.
+    MODO_CLARO = """
 <meta name="color-scheme" content="only light">
 <style>html { color-scheme: only light; } body { background: #fff; }</style>
 <script>
@@ -89,47 +77,72 @@ MODO_CLARO = """
 </script>
 """
 
+    def __init__(self) -> None:
+        self.settings = get_settings()
+        self.app = FastAPI(
+            title="API Vehículo IoT",
+            description=DESCRIPCION,
+            version="1.0.0",
+            openapi_tags=ETIQUETAS,
+            lifespan=self._ciclo_de_vida,
+            docs_url=None,
+        )
+        self._configurar_cors()
+        self._registrar_errores()
+        self.app.add_api_route("/docs", self.documentacion, methods=["GET"], include_in_schema=False)
+        for controlador in self.CONTROLADORES:
+            self.app.include_router(controlador().router)
 
-@app.get("/docs", include_in_schema=False)
-async def documentacion():
-    pagina = get_swagger_ui_html(openapi_url=app.openapi_url, title=f"{app.title} - Swagger UI")
-    html = pagina.body.decode().replace("</head>", f"{MODO_CLARO}</head>", 1)
-    return HTMLResponse(html)
+    # ----- Arranque y parada -----
+    @asynccontextmanager
+    async def _ciclo_de_vida(self, app: FastAPI) -> AsyncIterator[None]:
+        contenedor = get_contenedor()  # valida las variables de entorno al arrancar
+        await contenedor.invitados.iniciar_vigilancia()  # cierra las pruebas vencidas (4.3)
+        logger.info("API lista en el puerto 8000 (Swagger en /docs)")
+        yield
+        await contenedor.invitados.detener_vigilancia()
+        await contenedor.ejecutor.cancelar_todas()
+
+    # ----- CORS -----
+    def _configurar_cors(self) -> None:
+        # El frontend vive en otro origen (GitHub Pages), así que el navegador exige CORS.
+        # CORS no es autenticación: la protección real son la sesión y los permisos por recurso.
+        self.app.add_middleware(
+            CORSMiddleware,
+            allow_origins=self.settings.lista_cors,
+            allow_methods=["GET", "POST"],
+            allow_headers=["Content-Type", "X-API-Key", "Authorization"],
+            allow_credentials=False,
+            max_age=600,
+        )
+
+    # ----- Errores -----
+    def _registrar_errores(self) -> None:
+        self.app.add_exception_handler(ApiError, self.manejar_error_api)
+        self.app.add_exception_handler(Exception, self.manejar_error_inesperado)
+
+    @staticmethod
+    async def manejar_error_api(request: Request, error: ApiError) -> JSONResponse:
+        return JSONResponse(status_code=error.status_code, content={"detail": error.mensaje})
+
+    @staticmethod
+    async def manejar_error_inesperado(request: Request, error: Exception) -> JSONResponse:
+        logger.exception("Error no controlado en %s %s", request.method, request.url.path)
+        return JSONResponse(status_code=500, content={"detail": "Error interno del servidor"})
+
+    # ----- Swagger -----
+    async def documentacion(self) -> HTMLResponse:
+        pagina = get_swagger_ui_html(openapi_url=self.app.openapi_url, title=f"{self.app.title} - Swagger UI")
+        html = pagina.body.decode().replace("</head>", f"{self.MODO_CLARO}</head>", 1)
+        return HTMLResponse(html)
 
 
-@app.exception_handler(ApiError)
-async def manejar_error_api(request: Request, error: ApiError):
-    return JSONResponse(status_code=error.status_code, content={"detail": error.mensaje})
-
-
-@app.exception_handler(Exception)
-async def manejar_error_inesperado(request: Request, error: Exception):
-    logger.exception("Error no controlado en %s %s", request.method, request.url.path)
-    return JSONResponse(status_code=500, content={"detail": "Error interno del servidor"})
-
-
-@app.get("/", tags=["Sistema"], summary="Estado del servicio")
-async def raiz():
-    return {"api": "Vehículo IoT", "estado": "Online", "documentacion": "/docs"}
-
-
-@app.get("/salud", response_model=Mensaje, tags=["Sistema"], summary="Comprobar la conexión con Amazon RDS",
-         responses=respuestas_error(503))
-async def salud():
-    await to_thread(get_contenedor().db.verificar)
-    return {"mensaje": "Conexión con Amazon RDS correcta"}
-
-
-for router in (auth.router, administracion.router, administracion.publico, invitados.router,
-               vehiculos.router, comandos.router, estado.router, movimientos.router,
-               historial.router, demos.router, websocket.router):
-    app.include_router(router)
+# Objeto que arranca uvicorn: `uvicorn app.main:app`
+app = AplicacionApi().app
 
 
 if __name__ == "__main__":
     import uvicorn
-
-    from app.core.config import get_settings
 
     settings = get_settings()
     uvicorn.run("app.main:app", host=settings.host, port=settings.port)

@@ -7,7 +7,7 @@ from app.repositories.historial_repository import HistorialRepository
 from app.schemas.movimiento import MovimientoSolicitud
 from app.services.demo_executor import EjecutorDemos
 from app.services.reglas import ReglasNegocio
-from app.websocket.eventos import TipoEvento, crear_evento
+from app.websocket.eventos import EventoWebSocket, TipoEvento
 from app.websocket.manager import GestorWebSocket
 
 
@@ -37,7 +37,7 @@ class MovimientoService:
         conectado = await asyncio.to_thread(self._registrar, id_vehiculo, comando["id_comando"], origen)
 
         # Solo se notifica cuando RDS ya confirmó la transacción.
-        evento = crear_evento(TipoEvento.MOVIMIENTO, id_vehiculo, comando["nombre"], comando["codigo"],
+        evento = EventoWebSocket.crear(TipoEvento.MOVIMIENTO, id_vehiculo, comando["nombre"], comando["codigo"],
                               id_comando=comando["id_comando"], origen=origen, conectado=conectado)
         await self._gestor.publicar(id_vehiculo, evento)
         return evento

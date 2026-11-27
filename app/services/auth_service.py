@@ -12,7 +12,7 @@ Tres reglas que no se negocian:
 
 from datetime import datetime, timezone
 
-from app.core.contrasenas import generar_token, hash_token, hashear_contrasena, verificar_contrasena
+from app.core.contrasenas import generador_tokens, hasher_contrasenas
 from app.core.exceptions import Conflicto, NoAutenticado, NoEncontrado, Prohibido, SolicitudInvalida
 
 ROL_ADMIN = "ADMIN"
@@ -67,15 +67,15 @@ class AuthService:
 
             # Mismo mensaje y mismo trabajo si el correo no existe o la clave está mal:
             # así no se puede averiguar qué correos están registrados.
-            valida = bool(usuario) and verificar_contrasena(contrasena, usuario["hash_contrasena"])
+            valida = bool(usuario) and hasher_contrasenas.verificar(contrasena, usuario["hash_contrasena"])
             if not valida or not usuario["activo"]:
                 self._auditoria.registrar(sesion, usuario["id_usuario"] if usuario else None,
                                           correo or "desconocido", "LOGIN", "sesion", None,
                                           "RECHAZADO", "Credenciales no válidas o cuenta inactiva")
                 raise NoAutenticado("Correo o contraseña incorrectos")
 
-            token = generar_token()
-            self._usuarios.crear_sesion(sesion, usuario["id_usuario"], hash_token(token), HORAS_SESION)
+            token = generador_tokens.generar()
+            self._usuarios.crear_sesion(sesion, usuario["id_usuario"], generador_tokens.huella(token), HORAS_SESION)
             self._auditoria.registrar(sesion, usuario["id_usuario"], correo, "LOGIN", "sesion",
                                       None, "OK", None)
             return {
@@ -91,7 +91,7 @@ class AuthService:
 
     def logout(self, token: str) -> None:
         with self._db.transaccion() as sesion:
-            self._usuarios.revocar_sesion(sesion, hash_token(token))
+            self._usuarios.revocar_sesion(sesion, generador_tokens.huella(token))
 
     # -----------------------------------------------------------------
     # Identificación a partir del token
@@ -101,7 +101,7 @@ class AuthService:
         así un endpoint público puede funcionar con o sin sesión."""
         if not token:
             return None
-        huella = hash_token(token)
+        huella = generador_tokens.huella(token)
         with self._db.transaccion() as sesion:
             # 1) ¿Es una sesión de usuario registrado?
             fila = self._usuarios.obtener_sesion(sesion, huella)
@@ -110,10 +110,10 @@ class AuthService:
 
             # 2) ¿Es una sesión temporal de invitado?
             invitado = self._invitados.obtener(sesion, huella)
-            if invitado and invitado["activa"] and _restantes(invitado) > 0:
+            if invitado and invitado["activa"] and self._restantes(invitado) > 0:
                 return Identidad(None, invitado["nombre_invitado"] or "Invitado", "", "INVITADO",
                                  invitado=True, id_vehiculo_invitado=invitado["id_vehiculo"],
-                                 segundos_restantes=_restantes(invitado))
+                                 segundos_restantes=self._restantes(invitado))
         return None
 
     # -----------------------------------------------------------------
@@ -266,7 +266,7 @@ class AuthService:
         self._exigir_dueno(identidad, id_vehiculo)
         with self._db.transaccion() as sesion:
             vigente = self._soporte.vigente(sesion, id_vehiculo)
-        return _soporte_publico(id_vehiculo, vigente)
+        return self._soporte_publico(id_vehiculo, vigente)
 
     def autorizar_soporte(self, identidad: Identidad | None, id_vehiculo: int, minutos: int) -> dict:
         identidad = self._exigir_dueno(identidad, id_vehiculo)
@@ -274,7 +274,7 @@ class AuthService:
             vigente = self._soporte.autorizar(sesion, id_vehiculo, identidad.id_usuario, minutos)
             self._auditoria.registrar(sesion, identidad.id_usuario, identidad.etiqueta, "AUTORIZAR_SOPORTE",
                                       "unidad", str(id_vehiculo), "OK", f"{minutos} minutos")
-        return _soporte_publico(id_vehiculo, vigente)
+        return self._soporte_publico(id_vehiculo, vigente)
 
     def revocar_soporte(self, identidad: Identidad | None, id_vehiculo: int) -> dict:
         identidad = self._exigir_dueno(identidad, id_vehiculo)
@@ -282,7 +282,7 @@ class AuthService:
             revocadas = self._soporte.revocar(sesion, id_vehiculo, identidad.id_usuario)
             self._auditoria.registrar(sesion, identidad.id_usuario, identidad.etiqueta, "REVOCAR_SOPORTE",
                                       "unidad", str(id_vehiculo), "OK" if revocadas else "SIN_CAMBIO", None)
-        return _soporte_publico(id_vehiculo, None)
+        return self._soporte_publico(id_vehiculo, None)
 
     def auditar(self, identidad: Identidad, accion: str, recurso: str, id_recurso: str | None,
                 detalle: str | None) -> None:
@@ -302,25 +302,28 @@ class AuthService:
         correo = correo.strip().lower()
         with self._db.transaccion() as sesion:
             id_usuario = self._usuarios.crear(sesion, nombre.strip(), correo,
-                                              hashear_contrasena(contrasena), rol, telefono)
+                                              hasher_contrasenas.hashear(contrasena), rol, telefono)
             self._auditoria.registrar(sesion, actor.id_usuario, actor.etiqueta, "CREAR",
                                       "usuario", str(id_usuario), "OK", f"rol={rol}")
             return id_usuario
 
+    # -----------------------------------------------------------------
+    # Ayudantes internos
+    # -----------------------------------------------------------------
+    @staticmethod
+    def _soporte_publico(id_vehiculo: int, vigente: dict | None) -> dict:
+        segundos = int(vigente["segundos_restantes"]) if vigente else 0
+        return {"id_vehiculo": id_vehiculo, "activa": segundos > 0, "segundos_restantes": max(segundos, 0)}
 
-def _soporte_publico(id_vehiculo: int, vigente: dict | None) -> dict:
-    segundos = int(vigente["segundos_restantes"]) if vigente else 0
-    return {"id_vehiculo": id_vehiculo, "activa": segundos > 0, "segundos_restantes": max(segundos, 0)}
-
-
-def _restantes(invitado: dict) -> int:
-    """Segundos que le quedan a una sesión de invitado, según el reloj del servidor."""
-    valor = invitado.get("segundos_restantes")
-    if valor is not None:
-        return int(valor)
-    expira = invitado.get("fecha_expira")
-    if not isinstance(expira, datetime):
-        return 0
-    if expira.tzinfo is None:
-        expira = expira.replace(tzinfo=timezone.utc)
-    return int((expira - datetime.now(timezone.utc)).total_seconds())
+    @staticmethod
+    def _restantes(invitado: dict) -> int:
+        """Segundos que le quedan a una sesión de invitado, según el reloj del servidor."""
+        valor = invitado.get("segundos_restantes")
+        if valor is not None:
+            return int(valor)
+        expira = invitado.get("fecha_expira")
+        if not isinstance(expira, datetime):
+            return 0
+        if expira.tzinfo is None:
+            expira = expira.replace(tzinfo=timezone.utc)
+        return int((expira - datetime.now(timezone.utc)).total_seconds())

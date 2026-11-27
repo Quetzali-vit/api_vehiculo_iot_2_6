@@ -1,7 +1,8 @@
 from app.db.database import SesionSP
+from app.repositories.base import Repositorio
 
 
-class VehiculoRepository:
+class VehiculoRepository(Repositorio):
     """Acceso a los SP de la tabla vehiculos."""
 
     def crear(self, sesion: SesionSP, nombre: str, modelo: str | None, descripcion: str | None,
@@ -14,7 +15,7 @@ class VehiculoRepository:
 
     def obtener(self, sesion: SesionSP, id_vehiculo: int) -> dict | None:
         filas = sesion.llamar("sp_obtener_vehiculo", id_vehiculo)
-        return filas[0] if filas else None
+        return self._primera(filas)
 
     def actualizar(self, sesion: SesionSP, id_vehiculo: int, nombre: str, modelo: str | None,
                    descripcion: str | None, microcontrolador: str | None, activo: bool) -> None:

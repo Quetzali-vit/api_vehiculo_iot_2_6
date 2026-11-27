@@ -1,7 +1,8 @@
 from app.db.database import SesionSP
+from app.repositories.base import Repositorio
 
 
-class ComandoRepository:
+class ComandoRepository(Repositorio):
     """Acceso a los SP de la tabla comandos."""
 
     def crear(self, sesion: SesionSP, id_vehiculo: int, nombre: str, codigo: int, descripcion: str | None) -> int:

@@ -36,7 +36,12 @@ class Settings(BaseSettings):
     def lista_cors(self) -> list[str]:
         return [o.strip().rstrip("/") for o in self.cors_origins.split(",") if o.strip()]
 
+    @classmethod
+    @lru_cache
+    def cargar(cls) -> "Settings":
+        """Una sola configuración por proceso (Singleton): el .env se lee una vez."""
+        return cls()
 
-@lru_cache
-def get_settings() -> Settings:
-    return Settings()
+
+# Nombre que usan FastAPI (Depends) y el resto del código para pedir la configuración
+get_settings = Settings.cargar

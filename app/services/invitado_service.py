@@ -14,7 +14,7 @@ Reglas comerciales que impone el servidor, no el navegador:
 import asyncio
 import logging
 
-from app.core.contrasenas import generar_token, hash_token
+from app.core.contrasenas import generador_tokens
 from app.core.exceptions import Conflicto, NoEncontrado, Prohibido, SolicitudInvalida
 from app.schemas.movimiento import MovimientoSolicitud
 
@@ -49,12 +49,12 @@ class InvitadoService:
     # Alta y baja de la sesión de prueba
     # -----------------------------------------------------------------
     def iniciar(self, id_modelo: int | None, nombre: str | None) -> dict:
-        token = generar_token()
+        token = generador_tokens.generar()
         with self._db.transaccion() as sesion:
             if id_modelo is not None and self._modelos.obtener(sesion, id_modelo) is None:
                 raise NoEncontrado(f"No existe el modelo {id_modelo}")
             try:
-                datos = self._invitados.crear(sesion, id_modelo, hash_token(token),
+                datos = self._invitados.crear(sesion, id_modelo, generador_tokens.huella(token),
                                               (nombre or "Invitado")[:80], MINUTOS_PRUEBA)
             except Conflicto as error:
                 if "duplicado" in error.mensaje:
@@ -71,17 +71,17 @@ class InvitadoService:
 
     def estado(self, token: str) -> dict:
         with self._db.transaccion() as sesion:
-            datos = self._invitados.obtener(sesion, hash_token(token))
+            datos = self._invitados.obtener(sesion, generador_tokens.huella(token))
         if datos is None:
             raise NoEncontrado("Esa sesión de prueba no existe")
         return self._publico(datos)
 
     async def terminar(self, token: str, motivo: str = "CERRADA") -> dict:
         with self._db.transaccion() as sesion:
-            datos = self._invitados.obtener(sesion, hash_token(token))
+            datos = self._invitados.obtener(sesion, generador_tokens.huella(token))
             if datos is None:
                 raise NoEncontrado("Esa sesión de prueba no existe")
-            self._invitados.finalizar(sesion, hash_token(token), motivo)
+            self._invitados.finalizar(sesion, generador_tokens.huella(token), motivo)
             id_vehiculo = datos["id_vehiculo"]
         await self._detener(id_vehiculo)   # la unidad nunca se queda en movimiento
         return {"mensaje": "Sesión de prueba terminada y unidad detenida"}

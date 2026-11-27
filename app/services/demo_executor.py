@@ -5,7 +5,7 @@ from functools import partial
 
 from app.core.exceptions import Conflicto, NoEncontrado
 from app.services.demo_service import DemoService
-from app.websocket.eventos import TipoEvento, crear_evento
+from app.websocket.eventos import EventoWebSocket, TipoEvento
 from app.websocket.manager import GestorWebSocket
 
 logger = logging.getLogger(__name__)
@@ -67,11 +67,11 @@ class EjecutorDemos:
         datos_demo = {"id_demo": demo["id_demo"], "demo": demo["nombre"]}
 
         try:
-            await self._gestor.publicar(id_vehiculo, crear_evento(
+            await self._gestor.publicar(id_vehiculo, EventoWebSocket.crear(
                 TipoEvento.DEMO_INICIO, id_vehiculo, **datos_demo, total_movimientos=total))
             for movimiento in movimientos:
                 await asyncio.to_thread(self._demos.actualizar_estado, id_vehiculo, movimiento["id_comando"], conectado)
-                await self._gestor.publicar(id_vehiculo, crear_evento(
+                await self._gestor.publicar(id_vehiculo, EventoWebSocket.crear(
                     TipoEvento.DEMO_MOVIMIENTO, id_vehiculo, movimiento["comando"], movimiento["codigo"],
                     **datos_demo, orden=movimiento["orden"], total_movimientos=total,
                     duracion_ms=movimiento["duracion_ms"], pausa_ms=movimiento["pausa_ms"]))
@@ -79,19 +79,19 @@ class EjecutorDemos:
                 await asyncio.sleep(movimiento["pausa_ms"] / 1000)
         except asyncio.CancelledError:
             detener = await self._detener_seguro(id_vehiculo, plan)
-            await self._gestor.publicar(id_vehiculo, crear_evento(
+            await self._gestor.publicar(id_vehiculo, EventoWebSocket.crear(
                 TipoEvento.DEMO_CANCELADA, id_vehiculo, *detener, **datos_demo,
                 mensaje="La DEMO se canceló; no se enviarán más movimientos"))
             return
         except Exception:
             logger.exception("La DEMO %s del vehículo %s se detuvo por un error", demo["id_demo"], id_vehiculo)
             detener = await self._detener_seguro(id_vehiculo, plan)
-            await self._gestor.publicar(id_vehiculo, crear_evento(
+            await self._gestor.publicar(id_vehiculo, EventoWebSocket.crear(
                 TipoEvento.DEMO_ERROR, id_vehiculo, *detener, **datos_demo,
                 mensaje="La DEMO se detuvo por un error al comunicarse con la base de datos"))
             return
 
-        await self._gestor.publicar(id_vehiculo, crear_evento(
+        await self._gestor.publicar(id_vehiculo, EventoWebSocket.crear(
             TipoEvento.DEMO_FIN, id_vehiculo, **datos_demo, total_movimientos=total))
 
     async def _detener_seguro(self, id_vehiculo: int, plan: dict) -> tuple[str | None, int | None]:
